@@ -11,6 +11,13 @@ import random
 import requests
 import time
 from datetime import datetime
+from pathlib import Path
+
+# Add fallback Google search
+try:
+    from google_search_fallback import GoogleScholarFallback
+except ImportError:
+    GoogleScholarFallback = None
 
 class GapHunterBot:
     def __init__(self):
@@ -42,7 +49,10 @@ class GapHunterBot:
         """Search Semantic Scholar for papers"""
         try:
             url = "https://api.semanticscholar.org/graph/v1/paper/search"
-            headers = {'x-api-key': os.environ.get('S2_API_KEY')}
+            headers = {
+                'x-api-key': os.environ.get('S2_API_KEY'),
+                'User-Agent': 'Gap-Hunter-Bot/1.0 (Academic Research Tool; contact@gaphunter.com)'
+            }
             params = {
                 'query': query,
                 'limit': limit,
@@ -64,9 +74,12 @@ class GapHunterBot:
         """Search CORE for papers"""
         try:
             url = "https://api.core.ac.uk/v3/search/works"
-            headers = {'Authorization': f'Bearer {os.environ.get("CORE_API_KEY")}'}
+            headers = {
+                'Authorization': f'Bearer {os.environ.get("CORE_API_KEY")}',
+                'User-Agent': 'Gap-Hunter-Bot/1.0 (Academic Research Tool; contact@gaphunter.com)'
+            }
             params = {'q': query, 'limit': page_size}
-            
+
             response = requests.get(url, headers=headers, params=params, timeout=10)
             if response.status_code == 200:
                 data = response.json()
@@ -87,7 +100,10 @@ class GapHunterBot:
                 'mailto': os.environ.get('CONTACT_EMAIL')
             }
             
-            response = requests.get(url, params=params, timeout=10)
+            headers = {
+                'User-Agent': 'Gap-Hunter-Bot/1.0 (Academic Research Tool; contact@gaphunter.com)'
+            }
+            response = requests.get(url, headers=headers, params=params, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 return data.get('message', {}).get('items', [])
