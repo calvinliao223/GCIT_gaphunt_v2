@@ -216,6 +216,52 @@ def display_sidebar():
     # Security status (replaces debug info in production)
     display_security_status()
 
+    # Quick Help Tips
+    with st.sidebar.expander("💡 Quick Tips"):
+        st.markdown("""
+        **🎯 For Best Results:**
+        - Use specific research topics
+        - Include domain + method
+        - Example: "deep learning for medical diagnosis"
+
+        **📊 Novelty Scores:**
+        - 5: Breakthrough opportunity
+        - 4: Strong potential
+        - 3: Standard research gap
+        - 2-1: Consider rethinking
+
+        **🔑 Need API Keys?**
+        - OpenAI: platform.openai.com
+        - Anthropic: console.anthropic.com
+        - Google: makersuite.google.com
+        """)
+
+    # Example Queries
+    with st.sidebar.expander("📝 Example Queries"):
+        st.markdown("""
+        **Good Examples:**
+        - `federated learning privacy`
+        - `computer vision healthcare`
+        - `blockchain supply chain`
+        - `NLP financial analysis`
+        - `robotics elderly care`
+
+        **Click any example to try it!**
+        """)
+
+        example_queries = [
+            "federated learning privacy preservation",
+            "computer vision for medical diagnosis",
+            "blockchain in supply chain management",
+            "natural language processing for financial analysis",
+            "robotics for elderly care assistance"
+        ]
+
+        for query in example_queries:
+            if st.button(f"🔍 {query}", key=f"example_{query}"):
+                st.session_state.search_query = query
+                st.rerun()
+
     # Debug section (expandable) - only show in development
     if os.path.exists(Path(__file__).parent.parent / ".env"):
         with st.sidebar.expander("🔍 Debug Info"):
@@ -431,14 +477,240 @@ def display_score_chart(results):
     
     st.plotly_chart(fig, use_container_width=True)
 
+def show_help_guide():
+    """Display comprehensive help guide"""
+    st.markdown("# 📖 How to Use Gap Hunter Bot")
+
+    # Getting Started Guide
+    with st.expander("🚀 Getting Started Guide", expanded=False):
+        st.markdown("""
+        ### Step-by-Step Instructions for New Users
+
+        **1. Configure Your LLM Provider**
+        - Choose your preferred AI provider from the sidebar (OpenAI, Anthropic, or Google Gemini)
+        - Ensure your API keys are properly configured (see API Key Setup section below)
+
+        **2. Enter Your Research Query**
+        - Type your research topic in the main input field
+        - Use specific, focused queries for best results
+        - Examples: "machine learning for medical diagnosis", "blockchain in supply chain management"
+
+        **3. Run Gap Analysis**
+        - Click "🔍 Hunt for Research Gaps" to start the analysis
+        - The system will search multiple academic databases
+        - Results will appear with novelty scores and recommendations
+
+        **4. Review Results**
+        - Examine identified research gaps
+        - Check novelty scores (1-5 scale)
+        - Read suggested next steps for each gap
+        """)
+
+    # Feature Overview
+    with st.expander("⚡ Feature Overview", expanded=False):
+        st.markdown("""
+        ### Main Features Explained
+
+        **🔍 Research Gap Identification**
+        - Searches Semantic Scholar, CORE, and Crossref databases
+        - Analyzes recent papers (last 5 years) for research limitations
+        - Identifies under-explored areas in your field
+
+        **📊 Novelty Scoring (1-5 Scale)**
+        - **Score 5**: Highly novel, significant research opportunity
+        - **Score 4**: Good novelty, worth investigating
+        - **Score 3**: Moderate novelty, standard research gap
+        - **Score 2**: Limited novelty, incremental improvement
+        - **Score 1**: Low novelty, may need rethinking
+
+        **🎯 Next Steps Generation**
+        - Provides concrete, actionable research directions
+        - Suggests methodologies and validation approaches
+        - Keeps recommendations under 50 words for clarity
+
+        **🏆 Q1 Journal Detection**
+        - Identifies papers from top-tier journals
+        - Helps assess research impact and credibility
+        - Includes Nature, Science, IEEE, ACM, and other prestigious venues
+        """)
+
+    # Input Guidelines
+    with st.expander("📝 Input Guidelines & Examples", expanded=False):
+        st.markdown("""
+        ### How to Format Research Queries for Best Results
+
+        **✅ Good Query Examples:**
+        - `"deep learning for drug discovery"`
+        - `"natural language processing in healthcare"`
+        - `"computer vision for autonomous vehicles"`
+        - `"blockchain consensus mechanisms"`
+        - `"federated learning privacy preservation"`
+
+        **❌ Poor Query Examples:**
+        - `"AI"` (too broad)
+        - `"machine learning is good"` (not a research topic)
+        - `"help me with my thesis"` (not specific)
+        - `"latest trends"` (too vague)
+
+        **💡 Tips for Better Queries:**
+        - **Be Specific**: Include domain and application area
+        - **Use Technical Terms**: Academic keywords work better
+        - **Focus on Methods**: Include techniques or approaches
+        - **Avoid Questions**: Use declarative phrases instead
+        - **Length**: 3-8 words typically work best
+        """)
+
+    # Understanding Results
+    with st.expander("📊 Understanding Results", expanded=False):
+        st.markdown("""
+        ### How to Interpret Your Results
+
+        **📈 Novelty Scores Explained:**
+        - **Score 5** 🟢: Breakthrough opportunity - highly novel research area
+        - **Score 4** 🟡: Strong potential - good research opportunity
+        - **Score 3** 🟠: Standard gap - typical research direction
+        - **Score 2** 🔴: Limited novelty - incremental improvement
+        - **Score 1** ⚫: Low impact - consider rethinking approach
+
+        **⚠️ "Rethink" Indicator:**
+        - Appears when novelty score is below 3
+        - Suggests the research gap may not be significant enough
+        - Consider refining your query or exploring different angles
+
+        **🎯 Research Gap Format:**
+        - Concise statements (≤25 words)
+        - Focus on specific limitations or missing elements
+        - Highlight practical or theoretical shortcomings
+
+        **📋 Next Steps Format:**
+        - Actionable recommendations (≤50 words)
+        - Suggest specific methodologies or approaches
+        - Include validation and benchmarking strategies
+        """)
+
+    # API Key Setup
+    with st.expander("🔑 API Key Setup Guide", expanded=False):
+        st.markdown("""
+        ### How to Obtain and Configure API Keys
+
+        **🤖 OpenAI API Key:**
+        1. Visit [OpenAI Platform](https://platform.openai.com/api-keys)
+        2. Sign up or log in to your account
+        3. Click "Create new secret key"
+        4. Copy the key (starts with `sk-proj-...`)
+        5. Add to your environment or Streamlit secrets
+
+        **🧠 Anthropic Claude API Key:**
+        1. Go to [Anthropic Console](https://console.anthropic.com/)
+        2. Create an account or sign in
+        3. Navigate to API Keys section
+        4. Generate a new key (starts with `sk-ant-api...`)
+        5. Configure in your deployment settings
+
+        **🔍 Google API Keys:**
+        1. **Google AI Studio**: Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
+        2. **Google Cloud Console**: Go to [Google Cloud Console](https://console.cloud.google.com/)
+        3. Enable required APIs (Custom Search, etc.)
+        4. Create credentials and copy API key
+        5. Add to your configuration
+
+        **📚 Research Database APIs:**
+        - **Semantic Scholar**: [Get API Key](https://www.semanticscholar.org/product/api)
+        - **CORE**: [Register for API](https://core.ac.uk/services/api/)
+        - **Crossref**: Free, no key required (uses contact email)
+        """)
+
+    # Troubleshooting
+    with st.expander("🔧 Troubleshooting", expanded=False):
+        st.markdown("""
+        ### Common Issues and Solutions
+
+        **❌ "API Key Missing" Errors:**
+        - Check that all required API keys are configured
+        - Verify keys are correctly formatted (no extra spaces)
+        - Ensure keys have proper permissions and aren't expired
+
+        **🚫 "403 Forbidden" or "Rate Limited" Errors:**
+        - You've exceeded API quota limits
+        - Wait before making more requests
+        - Consider upgrading your API plan
+        - Check if your IP is blocked
+
+        **📡 "No Results Found" Issues:**
+        - Try broader or more specific search terms
+        - Check if your query uses standard academic terminology
+        - Verify research databases are accessible
+
+        **⏱️ "Timeout" or "Connection" Errors:**
+        - Check your internet connection
+        - Research databases may be temporarily unavailable
+        - Try again in a few minutes
+
+        **🔄 "Processing Failed" Errors:**
+        - LLM provider may be experiencing issues
+        - Try switching to a different provider
+        - Simplify your research query
+        """)
+
+    # Best Practices
+    with st.expander("💡 Best Practices", expanded=False):
+        st.markdown("""
+        ### Tips for Optimal Results
+
+        **🎯 Query Optimization:**
+        - Start with specific, focused topics
+        - Use established academic terminology
+        - Include both method and application domain
+        - Test variations of your query
+
+        **📊 Result Interpretation:**
+        - Focus on gaps with scores 3+ for viable research
+        - Look for patterns across multiple results
+        - Consider interdisciplinary opportunities
+        - Validate gaps with recent literature reviews
+
+        **🔄 Iterative Refinement:**
+        - Use initial results to refine your search
+        - Explore related keywords and concepts
+        - Combine insights from multiple queries
+        - Document promising research directions
+
+        **⚡ Efficiency Tips:**
+        - Save interesting results for later review
+        - Use multiple LLM providers for comparison
+        - Export results for further analysis
+        - Keep track of your search history
+
+        **🎓 Academic Best Practices:**
+        - Verify gaps with comprehensive literature review
+        - Consider ethical implications of research directions
+        - Assess feasibility and resource requirements
+        - Collaborate with domain experts when possible
+        """)
+
+    st.markdown("---")
+    st.markdown("💡 **Need more help?** Check the sidebar for quick tips and status information!")
+    st.markdown("🔗 **Found a bug?** Please report issues on our [GitHub repository](https://github.com/calvinliao223/GCIT_gaphunt_v2)")
+    st.markdown("📧 **Contact**: For academic collaborations or questions, reach out via the contact information in the app.")
+
 def main():
     """Main Streamlit application"""
     initialize_session_state()
     display_header()
     display_sidebar()
-    
-    # Main search interface
-    st.markdown("## 🔍 Search for Research Gaps")
+
+    # Add help guide toggle
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.markdown("## 🔍 Search for Research Gaps")
+    with col2:
+        if st.button("📖 Help Guide", help="Click to view comprehensive usage instructions"):
+            st.session_state.show_help = not st.session_state.get('show_help', False)
+
+    # Show help guide if toggled
+    if st.session_state.get('show_help', False):
+        show_help_guide()
+        st.markdown("---")
     
     # Search form
     with st.form("search_form"):
@@ -447,17 +719,42 @@ def main():
         with col1:
             topic = st.text_input(
                 "Enter your research topic:",
-                placeholder="e.g., machine learning, computer vision, natural language processing",
-                help="Enter any academic research topic to find research gaps and generate ideas"
+                value=st.session_state.get('search_query', ''),
+                placeholder="e.g., machine learning for healthcare, blockchain in finance",
+                help="Be specific about your research area for better results"
             )
         
         with col2:
             st.markdown("<br>", unsafe_allow_html=True)  # Add spacing
             search_button = st.form_submit_button("🔍 Hunt Gaps", use_container_width=True)
+
+    # Clear search query button (outside form)
+    col1, col2, col3 = st.columns([1, 1, 4])
+    with col1:
+        if st.button("🗑️ Clear", help="Clear the search field"):
+            st.session_state.search_query = ""
+            st.rerun()
+    with col2:
+        if st.button("📖 Help", help="Show comprehensive help guide"):
+            st.session_state.show_help = not st.session_state.get('show_help', False)
+            st.rerun()
+
+    # Updated example topics with better formatting
+    st.markdown("**💡 Try these examples:** Click any topic in the sidebar or use: `federated learning privacy`, `computer vision healthcare`, `blockchain supply chain`")
     
-    # Example topics
-    st.markdown("**💡 Example topics:** `artificial intelligence`, `deep learning`, `computer vision`, `natural language processing`, `machine learning for healthcare`")
-    
+    # Show quick start guide for first-time users
+    if not st.session_state.search_history and not st.session_state.get('show_help', False):
+        st.info("""
+        👋 **Welcome to Gap Hunter Bot!**
+
+        **Quick Start:**
+        1. Enter a specific research topic above (e.g., "machine learning for healthcare")
+        2. Click "🔍 Hunt Gaps" to find research opportunities
+        3. Review novelty scores and suggested next steps
+
+        💡 **Tip:** Click "📖 Help" for comprehensive usage instructions or try the example queries in the sidebar!
+        """)
+
     # Handle search
     if search_button and topic:
         # Add to search history
