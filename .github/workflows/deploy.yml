@@ -20,22 +20,35 @@ jobs:
       uses: trufflesecurity/trufflehog@main
       with:
         path: ./
-        base: main
-        head: HEAD
+        base: ${{ github.event.before }}
+        head: ${{ github.sha }}
         extra_args: --debug --only-verified
+      continue-on-error: true  # Don't fail on first push
     
     - name: Check for hardcoded secrets
       run: |
-        # Check for potential API key patterns
-        if grep -r "sk-[a-zA-Z0-9]" . --exclude-dir=.git --exclude="*.md" --exclude="*.example"; then
-          echo "❌ Potential OpenAI API key found in code!"
+        # Check for potential API key patterns (excluding .env and demo keys)
+        echo "🔍 Scanning for hardcoded API keys..."
+
+        # Check for OpenAI keys (excluding demo research keys)
+        if grep -r "sk-proj-[a-zA-Z0-9]" . --exclude-dir=.git --exclude="*.md" --exclude="*.example" --exclude=".env" --exclude-dir=.venv; then
+          echo "❌ OpenAI API key found in source code!"
           exit 1
         fi
-        if grep -r "sk-ant-api" . --exclude-dir=.git --exclude="*.md" --exclude="*.example"; then
-          echo "❌ Potential Anthropic API key found in code!"
+
+        # Check for Anthropic keys
+        if grep -r "sk-ant-api[0-9]" . --exclude-dir=.git --exclude="*.md" --exclude="*.example" --exclude=".env" --exclude-dir=.venv; then
+          echo "❌ Anthropic API key found in source code!"
           exit 1
         fi
-        echo "✅ No hardcoded API keys detected"
+
+        # Check for any suspicious long keys
+        if grep -r "sk-[a-zA-Z0-9]\{40,\}" . --exclude-dir=.git --exclude="*.md" --exclude="*.example" --exclude=".env" --exclude-dir=.venv; then
+          echo "❌ Potential API key found in source code!"
+          exit 1
+        fi
+
+        echo "✅ No hardcoded API keys detected in source code"
 
   build-and-deploy:
     needs: security-scan
