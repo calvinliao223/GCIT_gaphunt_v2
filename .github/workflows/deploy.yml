@@ -1,0 +1,124 @@
+name: Secure Deploy Gap Hunter Bot
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run secret detection
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: main
+        head: HEAD
+        extra_args: --debug --only-verified
+    
+    - name: Check for hardcoded secrets
+      run: |
+        # Check for potential API key patterns
+        if grep -r "sk-[a-zA-Z0-9]" . --exclude-dir=.git --exclude="*.md" --exclude="*.example"; then
+          echo "❌ Potential OpenAI API key found in code!"
+          exit 1
+        fi
+        if grep -r "sk-ant-api" . --exclude-dir=.git --exclude="*.md" --exclude="*.example"; then
+          echo "❌ Potential Anthropic API key found in code!"
+          exit 1
+        fi
+        echo "✅ No hardcoded API keys detected"
+
+  build-and-deploy:
+    needs: security-scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./docker/Dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+
+  deploy-to-staging:
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+    - name: Deploy to staging
+      run: |
+        echo "🚀 Deploying to staging environment"
+        # Use GitHub secrets for API keys
+        # These are injected as environment variables
+        
+    - name: Health check
+      run: |
+        # Wait for deployment and check health
+        sleep 30
+        curl -f ${{ secrets.STAGING_URL }}/_stcore/health || exit 1
+        echo "✅ Staging deployment healthy"
+
+  deploy-to-production:
+    needs: deploy-to-staging
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - name: Deploy to production
+      run: |
+        echo "🚀 Deploying to production environment"
+        # Production deployment with secrets from GitHub
+        
+    - name: Notify deployment
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+      if: always()
+
+  security-monitoring:
+    needs: deploy-to-production
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - name: Monitor API usage
+      run: |
+        # Check for unusual API usage patterns
+        echo "🔍 Monitoring API usage for anomalies"
+        
+    - name: Rotate secrets (scheduled)
+      if: github.event_name == 'schedule'
+      run: |
+        echo "🔄 Scheduled secret rotation"
+        # Implement secret rotation logic

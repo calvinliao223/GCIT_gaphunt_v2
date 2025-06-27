@@ -33,3 +33,9 @@ pandas
 scipy
 pillow
 requests
+# Web Interface
+streamlit
+pyyaml
+plotly
+# LLM Providers
+google-generativeai

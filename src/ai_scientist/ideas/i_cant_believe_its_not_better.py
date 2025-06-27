@@ -3,25 +3,74 @@ from datetime import datetime
 import numpy as np
 import time
 import os
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.metrics import accuracy_score, classification_report
-from sklearn.feature_extraction.text import TfidfVectorizer
-import pandas as pd
-from PIL import Image
-import requests
+import sys
+import json
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-from datasets import load_dataset
-from huggingface_hub import login
+# Import ML libraries with error handling
+try:
+    from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.svm import SVC
+    from sklearn.model_selection import train_test_split, cross_val_score
+    from sklearn.preprocessing import StandardScaler, LabelEncoder
+    from sklearn.metrics import accuracy_score, classification_report
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
+except ImportError as e:
+    print(f"Installing required ML packages...")
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "scikit-learn"])
+    from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.svm import SVC
+    from sklearn.model_selection import train_test_split, cross_val_score
+    from sklearn.preprocessing import StandardScaler, LabelEncoder
+    from sklearn.metrics import accuracy_score, classification_report
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
 
-# Only login if HF_TOKEN is available
-if "HF_TOKEN" in os.environ:
-    login(token=os.environ["HF_TOKEN"])
+try:
+    import pandas as pd
+except ImportError:
+    print("Installing pandas...")
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "pandas"])
+    import pandas as pd
+
+try:
+    from PIL import Image
+except ImportError:
+    print("Installing Pillow...")
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "pillow"])
+    from PIL import Image
+
+try:
+    import requests
+except ImportError:
+    print("Installing requests...")
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "requests"])
+    import requests
+
+# Try to import datasets, but make it optional
+try:
+    from datasets import load_dataset
+    DATASETS_AVAILABLE = True
+except ImportError:
+    print("Datasets library not available, using synthetic data...")
+    DATASETS_AVAILABLE = False
+    load_dataset = None
+
+# Try to login to HuggingFace if available
+try:
+    if "HF_TOKEN" in os.environ:
+        from huggingface_hub import login
+        login(token=os.environ["HF_TOKEN"])
+except:
+    pass  # Skip if not available
 
 ## DATASET REFERENCE
 
@@ -180,24 +229,43 @@ def preprocess_image_for_ml(image, size=(IMAGE_SIZE, IMAGE_SIZE)):
     features = np.concatenate([flattened, stats])
     return features
 
-# Load dataset (using a smaller, more manageable dataset for CPU processing)
-try:
-    # Try to load the dataset, but handle gracefully if not available
-    print("Loading dataset...")
-    train_dataset_hf = load_dataset(DATASET, split="train", trust_remote_code=True)
-    val_dataset_hf = load_dataset(DATASET, split="validation", trust_remote_code=True)
-    test_dataset_hf = load_dataset(DATASET, split="test", trust_remote_code=True)
-    print(f"Dataset loaded successfully")
-except Exception as e:
-    print(f"Could not load dataset {DATASET}: {e}")
-    print("Using CIFAR-10 as fallback...")
-    # Fallback to CIFAR-10 which is more commonly available
-    train_dataset_hf = load_dataset("uoft-cs/cifar10", split="train")
-    test_dataset_hf = load_dataset("uoft-cs/cifar10", split="test")
-    val_dataset_hf = None
+# Load dataset or create synthetic data
+if DATASETS_AVAILABLE:
+    try:
+        print("Loading dataset...")
+        train_dataset_hf = load_dataset(DATASET, split="train", trust_remote_code=True)
+        val_dataset_hf = load_dataset(DATASET, split="validation", trust_remote_code=True)
+        test_dataset_hf = load_dataset(DATASET, split="test", trust_remote_code=True)
+        print(f"Dataset loaded successfully")
+        USE_REAL_DATASET = True
+    except Exception as e:
+        print(f"Could not load dataset {DATASET}: {e}")
+        print("Using synthetic data instead...")
+        USE_REAL_DATASET = False
+else:
+    print("Using synthetic data for demonstration...")
+    USE_REAL_DATASET = False
 
 
 # 4. Prepare data for scikit-learn
+def create_synthetic_data(n_samples=2000, n_features=100, n_classes=10):
+    """Create synthetic dataset for ML classification"""
+    from sklearn.datasets import make_classification
+
+    print(f"Creating synthetic dataset with {n_samples} samples, {n_features} features, {n_classes} classes...")
+
+    X, y = make_classification(
+        n_samples=n_samples,
+        n_features=n_features,
+        n_informative=int(n_features * 0.7),
+        n_redundant=int(n_features * 0.2),
+        n_classes=n_classes,
+        n_clusters_per_class=1,
+        random_state=RANDOM_STATE
+    )
+
+    return X, y
+
 def prepare_sklearn_data(dataset, max_samples=5000):
     """Convert HuggingFace dataset to sklearn format"""
     print(f"Processing dataset with {len(dataset)} samples...")
@@ -224,22 +292,35 @@ def prepare_sklearn_data(dataset, max_samples=5000):
 
     return np.array(X), np.array(y)
 
-# Prepare training data
-print("Preparing training data...")
-X_train, y_train = prepare_sklearn_data(train_dataset_hf, max_samples=5000)
+# Prepare data based on availability
+if USE_REAL_DATASET:
+    # Use real dataset
+    print("Preparing training data...")
+    X_train, y_train = prepare_sklearn_data(train_dataset_hf, max_samples=5000)
 
-# Prepare test data
-print("Preparing test data...")
-X_test, y_test = prepare_sklearn_data(test_dataset_hf, max_samples=1000)
+    print("Preparing test data...")
+    X_test, y_test = prepare_sklearn_data(test_dataset_hf, max_samples=1000)
 
-# If validation set exists, use it; otherwise split training data
-if val_dataset_hf is not None:
-    print("Preparing validation data...")
-    X_val, y_val = prepare_sklearn_data(val_dataset_hf, max_samples=1000)
+    # If validation set exists, use it; otherwise split training data
+    if val_dataset_hf is not None:
+        print("Preparing validation data...")
+        X_val, y_val = prepare_sklearn_data(val_dataset_hf, max_samples=1000)
+    else:
+        # Split training data
+        X_train, X_val, y_train, y_val = train_test_split(
+            X_train, y_train, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y_train
+        )
 else:
-    # Split training data
-    X_train, X_val, y_train, y_val = train_test_split(
-        X_train, y_train, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y_train
+    # Use synthetic data
+    print("Creating synthetic data for ML classification...")
+    X, y = create_synthetic_data(n_samples=2000, n_features=100, n_classes=5)
+
+    # Split into train, validation, test
+    X_train, X_temp, y_train, y_temp = train_test_split(
+        X, y, test_size=0.4, random_state=RANDOM_STATE, stratify=y
+    )
+    X_val, X_test, y_val, y_test = train_test_split(
+        X_temp, y_temp, test_size=0.5, random_state=RANDOM_STATE, stratify=y_temp
     )
 
 print(f"Training data shape: {X_train.shape}")

@@ -1,0 +1,83 @@
+agent:
+  code:
+    max_tokens: 12000
+    model: claude-3-5-sonnet-20241022
+    provider: anthropic
+    temp: 1.0
+  data_preview: false
+  expose_prediction: false
+  feedback:
+    max_tokens: 8192
+    model: gpt-4o-2024-11-20
+    provider: openai
+    temp: 0.5
+  k_fold_validation: 1
+  multi_seed_eval:
+    num_seeds: 3
+  num_workers: 4
+  search:
+    debug_prob: 0.5
+    max_debug_depth: 3
+    num_drafts: 3
+  stages:
+    stage1_max_iters: 20
+    stage2_max_iters: 12
+    stage3_max_iters: 12
+    stage4_max_iters: 18
+  steps: 5
+  type: parallel
+  vlm_feedback:
+    max_tokens: null
+    model: gpt-4o-2024-11-20
+    provider: openai
+    temp: 0.5
+copy_data: true
+data_dir: data
+debug:
+  stage4: false
+eval: null
+exec:
+  agent_file_name: runfile.py
+  format_tb_ipython: false
+  timeout: 3600
+exp_name: run
+experiment:
+  num_syn_datasets: 1
+generate_report: true
+goal: null
+llm_providers:
+  default_provider: openai
+  providers:
+    anthropic:
+      api_key_env: ANTHROPIC_API_KEY
+      default_model: claude-3-5-sonnet-20241022
+      models:
+      - claude-3-5-sonnet-20241022
+      - claude-3-5-sonnet-20240620
+      - claude-3-haiku-20240307
+      name: Anthropic Claude
+    google:
+      api_key_env: GEMINI_API_KEY
+      default_model: gemini-1.5-pro
+      models:
+      - gemini-1.5-pro
+      - gemini-1.5-flash
+      - gemini-pro-vision
+      name: Google Gemini
+    openai:
+      api_key_env: OPENAI_API_KEY
+      default_model: gpt-4o
+      models:
+      - gpt-4o
+      - gpt-4o-mini
+      - gpt-4o-2024-11-20
+      - o1
+      - o1-mini
+      name: OpenAI
+log_dir: logs
+preprocess_data: false
+report:
+  model: gpt-4o-2024-11-20
+  provider: openai
+  temp: 1.0
+workspace_dir: workspaces

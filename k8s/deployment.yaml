@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gaphunter-bot
+  labels:
+    app: gaphunter-bot
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gaphunter-bot
+  template:
+    metadata:
+      labels:
+        app: gaphunter-bot
+    spec:
+      containers:
+      - name: gaphunter
+        image: gaphunter:latest
+        ports:
+        - containerPort: 8501
+        env:
+        # API keys from Kubernetes secrets
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gaphunter-api-keys
+              key: OPENAI_API_KEY
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gaphunter-api-keys
+              key: ANTHROPIC_API_KEY
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gaphunter-api-keys
+              key: GEMINI_API_KEY
+        - name: GOOGLE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gaphunter-api-keys
+              key: GOOGLE_API_KEY
+        - name: S2_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gaphunter-api-keys
+              key: S2_API_KEY
+        - name: CORE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gaphunter-api-keys
+              key: CORE_API_KEY
+        - name: CONTACT_EMAIL
+          valueFrom:
+            secretKeyRef:
+              name: gaphunter-api-keys
+              key: CONTACT_EMAIL
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /_stcore/health
+            port: 8501
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /_stcore/health
+            port: 8501
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gaphunter-service
+spec:
+  selector:
+    app: gaphunter-bot
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8501
+  type: LoadBalancer

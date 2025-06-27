@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  gaphunter:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8501:8501"
+    # Use Docker secrets instead of environment variables
+    secrets:
+      - openai_api_key
+      - anthropic_api_key
+      - gemini_api_key
+      - google_api_key
+      - s2_api_key
+      - core_api_key
+      - contact_email
+    environment:
+      # Point to secret files
+      - OPENAI_API_KEY_FILE=/run/secrets/openai_api_key
+      - ANTHROPIC_API_KEY_FILE=/run/secrets/anthropic_api_key
+      - GEMINI_API_KEY_FILE=/run/secrets/gemini_api_key
+      - GOOGLE_API_KEY_FILE=/run/secrets/google_api_key
+      - S2_API_KEY_FILE=/run/secrets/s2_api_key
+      - CORE_API_KEY_FILE=/run/secrets/core_api_key
+      - CONTACT_EMAIL_FILE=/run/secrets/contact_email
+    volumes:
+      - ../config:/app/config
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# Docker secrets (external - managed by Docker Swarm or external tools)
+secrets:
+  openai_api_key:
+    external: true
+  anthropic_api_key:
+    external: true
+  gemini_api_key:
+    external: true
+  google_api_key:
+    external: true
+  s2_api_key:
+    external: true
+  core_api_key:
+    external: true
+  contact_email:
+    external: true
