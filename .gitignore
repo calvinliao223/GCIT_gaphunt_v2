@@ -129,16 +129,57 @@ celerybeat.pid
 .venv
 .venv_jax
 
-# API key files and secrets
+# API key files and secrets (CRITICAL SECURITY)
 *api_key*
 *secret*
 *token*
+*credential*
+*auth*
 secrets.toml
+secrets.json
+secrets.yaml
+secrets.yml
+config/secrets/
+vault/
+.secrets/
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Specific API key patterns
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+*_key.txt
+*_secret.txt
+*_token.txt
+api_keys.json
+api_keys.yaml
+credentials.json
+service_account.json
+
+# Cloud provider credentials
+.aws/
+.gcp/
+.azure/
+gcloud/
+aws_credentials
+azure_credentials
+google_credentials
+
+# Docker secrets
+docker/secrets/
+secrets/
+
+# Kubernetes secrets
+k8s/secrets/
+kubernetes/secrets/
 
 # Spyder project settings
 .spyderproject
