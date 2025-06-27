@@ -278,39 +278,41 @@ class MinimalAgent:
             "scikit-learn",
             "statsmodels",
             "xgboost",
-            "lightGBM",
-            "torch",
-            "torchvision",
-            "torch-geometric",
+            "lightgbm",
+            "scipy",
+            "matplotlib",
+            "seaborn",
             "bayesian-optimization",
-            "timm",
-            "albumentations",
+            "pillow",
+            "requests",
         ]
         random.shuffle(pkgs)
         pkg_str = ", ".join([f"`{p}`" for p in pkgs])
 
         env_prompt = {
-            "Installed Packages": f"Your solution can use any relevant machine learning packages such as: {pkg_str}. Feel free to use any other packages too (all packages are already installed!). For neural networks we suggest using PyTorch rather than TensorFlow."
+            "Installed Packages": f"Your solution can use any relevant machine learning packages such as: {pkg_str}. Feel free to use any other packages too (all packages are already installed!). Focus on CPU-based machine learning approaches using scikit-learn and related libraries."
         }
         return env_prompt
 
     @property
     def _prompt_impl_guideline(self):
         impl_guideline = [
-            "CRITICAL GPU REQUIREMENTS - Your code MUST include ALL of these:",
-            "  - At the start of your code, add these lines to handle GPU/CPU:",
+            "CRITICAL CPU-BASED ML REQUIREMENTS - Your code MUST include ALL of these:",
+            "  - Use scikit-learn or other CPU-based machine learning libraries",
+            "  - Always normalize/scale your features using StandardScaler or similar:",
             "    ```python",
-            "    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')",
-            "    print(f'Using device: {device}')",
+            "    from sklearn.preprocessing import StandardScaler",
+            "    scaler = StandardScaler()",
+            "    X_train_scaled = scaler.fit_transform(X_train)",
+            "    X_test_scaled = scaler.transform(X_test)",
             "    ```",
-            "  - ALWAYS move models to device using the `.to(device)` method",
-            "  - ALWAYS move input tensors to device using the `.to(device)` method",
-            "  - ALWAYS move model related tensors to device using the `.to(device)` method",
-            "  - For optimizers, create them AFTER moving model to device",
-            "  - When using DataLoader, move batch tensors to device in training loop: `batch = {k: v.to(device) for k, v in batch.items() if isinstance(v, torch.Tensor)}`",
+            "  - Always split your data properly using train_test_split",
+            "  - Use cross-validation for robust model evaluation",
+            "  - For classification, consider class imbalance with class_weight='balanced'",
             "CRITICAL MODEL INPUT GUIDELINES:",
-            "  - Always pay extra attention to the input to the model being properly normalized",
-            "  - This is extremely important because the input to the model's forward pass directly affects the output, and the loss function is computed based on the output",
+            "  - Always pay extra attention to feature preprocessing and normalization",
+            "  - This is extremely important because the quality of features directly affects model performance",
+            "  - Use appropriate evaluation metrics for your task (accuracy, precision, recall, F1, etc.)",
         ]
         if hasattr(self.cfg.experiment, "num_syn_datasets"):
             num_syn_datasets = self.cfg.experiment.num_syn_datasets
@@ -1088,55 +1090,10 @@ class MinimalAgent:
         )
 
 
-class GPUManager:
-    """Manages GPU allocation across processes"""
-
-    def __init__(self, num_gpus: int):
-        self.num_gpus = num_gpus
-        self.available_gpus: Set[int] = set(range(num_gpus))
-        self.gpu_assignments: Dict[str, int] = {}  # process_id -> gpu_id
-
-    def acquire_gpu(self, process_id: str) -> int:
-        """Assigns a GPU to a process"""
-        if not self.available_gpus:
-            raise RuntimeError("No GPUs available")
-        print(f"Available GPUs: {self.available_gpus}")
-        print(f"Process ID: {process_id}")
-        gpu_id = min(self.available_gpus)
-        print(f"Acquiring GPU {gpu_id} for process {process_id}")
-        self.available_gpus.remove(gpu_id)
-        self.gpu_assignments[process_id] = gpu_id
-        print(f"GPU assignments: {self.gpu_assignments}")
-        return gpu_id
-
-    def release_gpu(self, process_id: str):
-        """Releases GPU assigned to a process"""
-        if process_id in self.gpu_assignments:
-            gpu_id = self.gpu_assignments[process_id]
-            self.available_gpus.add(gpu_id)
-            del self.gpu_assignments[process_id]
-
-
-def get_gpu_count() -> int:
-    """Get number of available NVIDIA GPUs without using torch"""
-    try:
-        # First try using nvidia-smi
-        nvidia_smi = subprocess.run(
-            ["nvidia-smi", "--query-gpu=gpu_name", "--format=csv,noheader"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        gpus = nvidia_smi.stdout.strip().split("\n")
-        return len(gpus)
-    except (subprocess.SubprocessError, FileNotFoundError):
-        # If nvidia-smi fails, try environment variable
-        cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
-        if cuda_visible_devices:
-            # Filter out empty strings and -1 values
-            devices = [d for d in cuda_visible_devices.split(",") if d and d != "-1"]
-            return len(devices)
-        return 0
+def get_cpu_count() -> int:
+    """Get number of available CPU cores for parallel processing"""
+    import multiprocessing
+    return multiprocessing.cpu_count()
 
 
 class ParallelAgent:
@@ -1166,18 +1123,13 @@ class ParallelAgent:
         )
         self.data_preview = None
         self.num_workers = cfg.agent.num_workers
-        self.num_gpus = get_gpu_count()
-        print(f"num_gpus: {self.num_gpus}")
-        if self.num_gpus == 0:
-            print("No GPUs detected, falling back to CPU-only mode")
-        else:
-            print(f"Detected {self.num_gpus} GPUs")
+        self.num_cpus = get_cpu_count()
+        print(f"Available CPU cores: {self.num_cpus}")
+        print("Running in CPU-only mode using scikit-learn and related libraries")
 
-        self.gpu_manager = GPUManager(self.num_gpus) if self.num_gpus > 0 else None
-
-        if self.num_gpus > 0:
-            self.num_workers = min(self.num_workers, self.num_gpus)
-            logger.info(f"Limiting workers to {self.num_workers} to match GPU count")
+        # Limit workers to reasonable number based on CPU cores
+        self.num_workers = min(self.num_workers, max(1, self.num_cpus // 2))
+        logger.info(f"Using {self.num_workers} parallel workers for CPU-based processing")
 
         self.timeout = self.cfg.exec.timeout
         self.executor = ProcessPoolExecutor(max_workers=self.num_workers)
@@ -1270,20 +1222,11 @@ class ParallelAgent:
         seed_nodes = []
         futures = []
         for seed in range(self.cfg.agent.multi_seed_eval.num_seeds):
-            gpu_id = None
-            if self.gpu_manager is not None:
-                try:
-                    process_id = f"seed_{seed}_worker"
-                    gpu_id = self.gpu_manager.acquire_gpu(process_id)
-                    logger.info(f"Assigned GPU {gpu_id} to seed {seed}")
-                except RuntimeError as e:
-                    logger.warning(
-                        f"Could not acquire GPU for seed {seed}: {e}. Running on CPU"
-                    )
+            logger.info(f"Setting up seed {seed} for CPU-based processing")
 
-            # Add seed to node code
+            # Add seed to node code (CPU-only version)
             node_data["code"] = (
-                f"# Set random seed\nimport random\nimport numpy as np\nimport torch\n\nseed = {seed}\nrandom.seed(seed)\nnp.random.seed(seed)\ntorch.manual_seed(seed)\nif torch.cuda.is_available():\n    torch.cuda.manual_seed(seed)\n\n"
+                f"# Set random seed for reproducibility\nimport random\nimport numpy as np\nfrom sklearn.utils import check_random_state\n\nseed = {seed}\nrandom.seed(seed)\nnp.random.seed(seed)\nrandom_state = check_random_state(seed)\n\n"
                 + node_code
             )
 
@@ -1301,7 +1244,7 @@ class ParallelAgent:
                     node_data,
                     self.task_desc,
                     self.cfg,
-                    gpu_id,
+                    None,  # No GPU assignment needed
                     memory_summary,
                     self.evaluation_metrics,
                     self.stage_name,
@@ -1411,7 +1354,7 @@ class ParallelAgent:
         node_data,
         task_desc,
         cfg,
-        gpu_id: int = None,
+        cpu_worker_id: int = None,
         memory_summary: str = None,
         evaluation_metrics=None,
         stage_name=None,
@@ -1440,12 +1383,9 @@ class ParallelAgent:
         working_dir = os.path.join(workspace, "working")
         os.makedirs(working_dir, exist_ok=True)
 
-        if gpu_id is not None:
-            os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-            logger.info(f"Process {process_id} assigned to GPU {gpu_id}")
-        else:
-            os.environ["CUDA_VISIBLE_DEVICES"] = ""
-            logger.info(f"Process {process_id} running on CPU")
+        # Ensure CPU-only processing
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        logger.info(f"Process {process_id} running on CPU (CPU-only mode)")
 
         # Create minimal agent for worker process with the global metric definition
         worker_agent = MinimalAgent(
@@ -2071,18 +2011,12 @@ class ParallelAgent:
 
         memory_summary = self.journal.generate_summary(include_code=False)
 
-        print("Submitting tasks to process pool")
+        print("Submitting tasks to CPU process pool")
         futures = []
         for node_data in node_data_list:
-            gpu_id = None
-            if self.gpu_manager is not None:
-                try:
-                    # Get current process ID for GPU assignment
-                    process_id = f"worker_{len(futures)}"
-                    gpu_id = self.gpu_manager.acquire_gpu(process_id)
-                    logger.info(f"Assigned GPU {gpu_id} to process {process_id}")
-                except RuntimeError as e:
-                    logger.warning(f"Could not acquire GPU: {e}. Running on CPU")
+            # CPU-only processing - no GPU assignment needed
+            process_id = f"worker_{len(futures)}"
+            logger.info(f"Submitting task to CPU worker {process_id}")
 
             if (
                 self.stage_name
@@ -2122,7 +2056,7 @@ class ParallelAgent:
                     node_data,
                     self.task_desc,
                     self.cfg,
-                    gpu_id,
+                    len(futures),  # CPU worker ID
                     memory_summary,
                     self.evaluation_metrics,
                     self.stage_name,
@@ -2171,14 +2105,9 @@ class ParallelAgent:
                 traceback.print_exc()
                 raise
             finally:
-                # Release GPU for this process if it was using one
+                # CPU-only processing - no GPU cleanup needed
                 process_id = f"worker_{i}"
-                if (
-                    self.gpu_manager is not None
-                    and process_id in self.gpu_manager.gpu_assignments
-                ):
-                    self.gpu_manager.release_gpu(process_id)
-                    logger.info(f"Released GPU for process {process_id}")
+                logger.debug(f"Completed processing for CPU worker {process_id}")
 
     def _update_hyperparam_tuning_state(self, result_node: Node):
         """Update hyperparam tuning tracking state based on execution results."""
@@ -2327,12 +2256,10 @@ class ParallelAgent:
     def cleanup(self):
         """Cleanup parallel workers and resources"""
         if not self._is_shutdown:
-            print("Shutting down parallel executor...")
+            print("Shutting down CPU parallel executor...")
             try:
-                # Release all GPUs
-                if self.gpu_manager is not None:
-                    for process_id in list(self.gpu_manager.gpu_assignments.keys()):
-                        self.gpu_manager.release_gpu(process_id)
+                # CPU-only processing - no GPU cleanup needed
+                pass
 
                 # Shutdown executor first
                 self.executor.shutdown(wait=False, cancel_futures=True)

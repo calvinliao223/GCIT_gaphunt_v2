@@ -1,22 +1,27 @@
 import warnings
 from datetime import datetime
 import numpy as np
-import time  # Add at the top with other imports
+import time
+import os
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.feature_extraction.text import TfidfVectorizer
+import pandas as pd
+from PIL import Image
+import requests
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-import os
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torchvision.transforms as T
-from torch.utils.data import DataLoader
-
 from datasets import load_dataset
-from torchvision.models import resnet50
 from huggingface_hub import login
 
-login(token=os.environ["HF_TOKEN"])
+# Only login if HF_TOKEN is available
+if "HF_TOKEN" in os.environ:
+    login(token=os.environ["HF_TOKEN"])
 
 ## DATASET REFERENCE
 
@@ -72,342 +77,277 @@ math_examples = load_dataset(
 # >>> math_examples.shape
 # {'train': (1999998, 2), 'test': (10000, 2)}
 
-## PRE-TRAINED MODELS REFERENCE
+## MACHINE LEARNING MODELS REFERENCE
 
-## Example: load a pre-trained model, use it to extract features from images, and calculate the similarity score between two images
-from transformers import pipeline
-from PIL import Image
-import requests
+## Example: Simple image feature extraction using basic image statistics
+def extract_image_features(image_path_or_url):
+    """Extract basic statistical features from an image"""
+    if image_path_or_url.startswith('http'):
+        image = Image.open(requests.get(image_path_or_url, stream=True).raw).convert("RGB")
+    else:
+        image = Image.open(image_path_or_url).convert("RGB")
 
-# Set device to GPU if available
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-pipe = pipeline(
-    task="image-feature-extraction",
-    model="google/vit-base-patch16-384",
-    device=device,
-    pool=True,
-)
+    # Convert to numpy array
+    img_array = np.array(image)
+
+    # Extract basic statistical features
+    features = []
+    for channel in range(3):  # RGB channels
+        channel_data = img_array[:, :, channel].flatten()
+        features.extend([
+            np.mean(channel_data),
+            np.std(channel_data),
+            np.median(channel_data),
+            np.min(channel_data),
+            np.max(channel_data)
+        ])
+
+    return np.array(features)
+
+# Example usage for image similarity
 img_urls = [
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/cats.png",
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/cats.jpeg",
 ]
-image_real = Image.open(requests.get(img_urls[0], stream=True).raw).convert("RGB")
-image_gen = Image.open(requests.get(img_urls[1], stream=True).raw).convert("RGB")
-outputs = pipe([image_real, image_gen])
-similarity_score = cosine_similarity(
-    torch.Tensor(outputs[0]), torch.Tensor(outputs[1]), dim=1
-)
 
-# other image models:
-pipe = pipeline(
-    task="image-feature-extraction",
-    model="facebook/dinov2-base",
-    device=device,
-    pool=True,
-)
-pipe = pipeline(
-    task="image-feature-extraction",
-    model="microsoft/rad-dino",
-    device=device,
-    pool=True,
-)  # trained to encode chest X-rays
+try:
+    features1 = extract_image_features(img_urls[0])
+    features2 = extract_image_features(img_urls[1])
 
-## Example: extract features from text
-feature_extractor = pipeline(
-    "feature-extraction", framework="pt", model="facebook/bart-base"
-)
+    # Calculate cosine similarity using sklearn
+    from sklearn.metrics.pairwise import cosine_similarity
+    similarity_score = cosine_similarity([features1], [features2])[0][0]
+    print(f"Image similarity score: {similarity_score}")
+except Exception as e:
+    print(f"Could not load images: {e}")
+    # Use dummy features for demonstration
+    features1 = np.random.rand(15)
+    features2 = np.random.rand(15)
+
+## Example: extract features from text using TF-IDF
+def extract_text_features(texts, max_features=1000):
+    """Extract TF-IDF features from text"""
+    vectorizer = TfidfVectorizer(max_features=max_features, stop_words='english')
+    if isinstance(texts, str):
+        texts = [texts]
+    features = vectorizer.fit_transform(texts)
+    return features.toarray(), vectorizer
+
+# Example usage
 text = "Transformers is an awesome library!"
-# Reducing along the first dimension to get a 768 dimensional array
-embed = feature_extractor(text, return_tensors="pt")[0].numpy().mean(axis=0)
+text_features, vectorizer = extract_text_features([text])
+print(f"Text feature shape: {text_features.shape}")
+embed = text_features[0]  # Get features for the first (and only) text
 
 
-## MINI-IMAGENET REFERENCE
+## MACHINE LEARNING CLASSIFICATION EXAMPLE
 
-# If you want to use mini-imagenet, you can refer to the following code:
-
-# 1. Configuration
-BATCH_SIZE = 512  # Increased from 128 to utilize H100's memory
-LEARNING_RATE = 3e-3  # Increased for faster convergence
-WEIGHT_DECAY = 1e-2
+# Configuration for CPU-based machine learning
 IMAGE_SIZE = 84
-NUM_WORKERS = 8  # Reduced as too many workers can cause overhead
 DATASET_NAME = "mini-imagenet"
-NUM_EPOCHS = 20  # Increased for better convergence
-STEPS_TO_LOG = 25  # Reduced for more frequent feedback
-NUM_TEST_BATCHES = 20  # Reduced while maintaining reasonable evaluation
 DATASET = "timm/mini-imagenet"
-WARMUP_EPOCHS = 2
+TEST_SIZE = 0.2
+RANDOM_STATE = 42
 
-transform = T.Compose(
-    [
-        T.Lambda(lambda img: img.convert("RGB")),
-        T.Resize((IMAGE_SIZE, IMAGE_SIZE)),
-        T.ToTensor(),
-        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ]
-)
-weights = None
+def preprocess_image_for_ml(image, size=(IMAGE_SIZE, IMAGE_SIZE)):
+    """Convert PIL image to feature vector for traditional ML"""
+    if isinstance(image, str):
+        # If it's a path, load the image
+        image = Image.open(image)
 
-# 2. Set device to GPU if available
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Resize and convert to RGB
+    image = image.convert("RGB").resize(size)
 
-# 3. Load the Hugging Face ImageNet dataset
-train_dataset_hf = load_dataset(
-    DATASET,  # or the appropriate dataset name
-    split="train",
-    trust_remote_code=True,  # Allow running custom code from the dataset
-)
+    # Convert to numpy array and flatten
+    img_array = np.array(image)
 
-val_dataset_hf = load_dataset(
-    DATASET,  # or the appropriate dataset name
-    split="validation",
-    trust_remote_code=True,  # Allow running custom code from the dataset
-)
+    # Extract features: flatten + basic statistics
+    flattened = img_array.flatten()
 
-test_dataset_hf = load_dataset(
-    DATASET,  # or the appropriate dataset name
-    split="test",
-    trust_remote_code=True,  # Allow running custom code from the dataset
-)
+    # Add statistical features
+    stats = []
+    for channel in range(3):
+        channel_data = img_array[:, :, channel]
+        stats.extend([
+            np.mean(channel_data),
+            np.std(channel_data),
+            np.median(channel_data),
+            np.min(channel_data),
+            np.max(channel_data)
+        ])
+
+    # Combine flattened pixels with statistical features
+    features = np.concatenate([flattened, stats])
+    return features
+
+# Load dataset (using a smaller, more manageable dataset for CPU processing)
+try:
+    # Try to load the dataset, but handle gracefully if not available
+    print("Loading dataset...")
+    train_dataset_hf = load_dataset(DATASET, split="train", trust_remote_code=True)
+    val_dataset_hf = load_dataset(DATASET, split="validation", trust_remote_code=True)
+    test_dataset_hf = load_dataset(DATASET, split="test", trust_remote_code=True)
+    print(f"Dataset loaded successfully")
+except Exception as e:
+    print(f"Could not load dataset {DATASET}: {e}")
+    print("Using CIFAR-10 as fallback...")
+    # Fallback to CIFAR-10 which is more commonly available
+    train_dataset_hf = load_dataset("uoft-cs/cifar10", split="train")
+    test_dataset_hf = load_dataset("uoft-cs/cifar10", split="test")
+    val_dataset_hf = None
 
 
-# 4. Create a custom PyTorch Dataset to apply transforms on-the-fly
-class HuggingFaceImageNet(torch.utils.data.Dataset):
-    def __init__(self, hf_dataset, transform=None):
-        self.hf_dataset = hf_dataset
-        self.transform = transform
+# 4. Prepare data for scikit-learn
+def prepare_sklearn_data(dataset, max_samples=5000):
+    """Convert HuggingFace dataset to sklearn format"""
+    print(f"Processing dataset with {len(dataset)} samples...")
 
-    def __len__(self):
-        return len(self.hf_dataset)
+    # Limit samples for computational efficiency
+    n_samples = min(len(dataset), max_samples)
+    indices = np.random.choice(len(dataset), n_samples, replace=False)
 
-    def __getitem__(self, idx):
-        sample = self.hf_dataset[idx]
-        # sample["image"] is a PIL Image
-        img = sample["image"]
+    X = []
+    y = []
+
+    for i, idx in enumerate(indices):
+        if i % 1000 == 0:
+            print(f"Processed {i}/{n_samples} samples...")
+
+        sample = dataset[int(idx)]
+        image = sample["image"]
         label = sample["label"]
-        if self.transform is not None:
-            img = self.transform(img)
-        return img, label
 
+        # Extract features from image
+        features = preprocess_image_for_ml(image)
+        X.append(features)
+        y.append(label)
 
-train_dataset = HuggingFaceImageNet(train_dataset_hf, transform=transform)
-val_dataset = HuggingFaceImageNet(val_dataset_hf, transform=transform)
-test_dataset = HuggingFaceImageNet(test_dataset_hf, transform=transform)
+    return np.array(X), np.array(y)
 
-# 5. Create DataLoader
-train_loader = DataLoader(
-    train_dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=True,
-    num_workers=NUM_WORKERS,  # Decodes/transforms in parallel
-    pin_memory=True,
-)
+# Prepare training data
+print("Preparing training data...")
+X_train, y_train = prepare_sklearn_data(train_dataset_hf, max_samples=5000)
 
-val_loader = DataLoader(
-    val_dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=False,
-    num_workers=NUM_WORKERS,
-    pin_memory=True,
-)
+# Prepare test data
+print("Preparing test data...")
+X_test, y_test = prepare_sklearn_data(test_dataset_hf, max_samples=1000)
 
-test_loader = DataLoader(
-    test_dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=False,
-    num_workers=NUM_WORKERS,
-    pin_memory=True,
-)
+# If validation set exists, use it; otherwise split training data
+if val_dataset_hf is not None:
+    print("Preparing validation data...")
+    X_val, y_val = prepare_sklearn_data(val_dataset_hf, max_samples=1000)
+else:
+    # Split training data
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_train, y_train, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y_train
+    )
 
-# 6. Define the model, loss function, and optimizer
-model = resnet50(weights=weights)
-model = model.to(device)
+print(f"Training data shape: {X_train.shape}")
+print(f"Validation data shape: {X_val.shape}")
+print(f"Test data shape: {X_test.shape}")
 
+# 5. Normalize features
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_val_scaled = scaler.transform(X_val)
+X_test_scaled = scaler.transform(X_test)
+
+# 6. Define and train multiple models
 start_time = time.time()
-# Use torch.compile with safer settings
-if torch.cuda.is_available():
-    try:
-        model = torch.compile(model)
-    except Exception as e:
-        print(f"Warning: torch.compile failed, falling back to eager mode. Error: {e}")
 
-criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
-
-# SGD with momentum and nesterov
-optimizer = optim.SGD(
-    model.parameters(),
-    lr=0.1,  # Higher initial LR for SGD
-    momentum=0.9,
-    weight_decay=WEIGHT_DECAY,  # Lower weight decay for SGD
-    nesterov=True,  # Enable Nesterov momentum
-)
-
-# Modified learning rate schedule for SGD
-
-scheduler = optim.lr_scheduler.SequentialLR(
-    optimizer,
-    schedulers=[
-        optim.lr_scheduler.LinearLR(
-            optimizer, start_factor=0.1, total_iters=WARMUP_EPOCHS * len(train_loader)
-        ),
-        optim.lr_scheduler.CosineAnnealingLR(
-            optimizer,
-            T_max=(NUM_EPOCHS - WARMUP_EPOCHS) * len(train_loader),
-            eta_min=1e-6,  # Lower minimum LR for SGD
-        ),
-    ],
-    milestones=[WARMUP_EPOCHS * len(train_loader)],
-)
-
-# Add gradient clipping to prevent instability
-GRAD_CLIP_NORM = 2.0
-
-
-# Helper function to calculate accuracy
-def calculate_accuracy(model, data_loader, device, max_batches=None):
-    model.eval()
-    correct = 0
-    total = 0
-    with torch.no_grad():
-        for batch_idx, (images, labels) in enumerate(data_loader):
-            if max_batches and batch_idx >= max_batches:
-                break
-            images, labels = images.to(device), labels.to(device)
-            outputs = model(images)
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-    return 100 * correct / total
-
-
-# Setup logging arrays and checkpoint directory before training loop
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-log_file = f"{DATASET_NAME}_training_log_{timestamp}.npy"
-checkpoint_dir = f"{DATASET_NAME}_checkpoints_{timestamp}"
-os.makedirs(checkpoint_dir, exist_ok=True)
-
-# Initialize arrays to store metrics
-metrics = {
-    "epoch": [],
-    "step": [],
-    "loss": [],
-    "train_accuracy": [],
-    "val_accuracy": [],
-    "test_accuracy": [],
+# Initialize different classifiers
+models = {
+    'Random Forest': RandomForestClassifier(n_estimators=100, random_state=RANDOM_STATE, n_jobs=-1),
+    'Gradient Boosting': GradientBoostingClassifier(n_estimators=100, random_state=RANDOM_STATE),
+    'Logistic Regression': LogisticRegression(random_state=RANDOM_STATE, max_iter=1000),
+    'SVM': SVC(random_state=RANDOM_STATE, probability=True)
 }
 
-# 9. Training Loop
-model.train()
-best_val_accuracy = 0.0
-for epoch in range(NUM_EPOCHS):
-    epoch_start_time = time.time()
-    running_loss = 0.0
+# Train and evaluate models
+results = {}
+best_model = None
+best_score = 0
 
-    for step, (images, labels) in enumerate(train_loader):
-        images = images.to(device)
-        labels = labels.to(device)
+print("Training models...")
+for name, model in models.items():
+    print(f"\nTraining {name}...")
 
-        # Forward pass
-        outputs = model(images)
-        loss = criterion(outputs, labels)
+    # Train the model
+    model.fit(X_train_scaled, y_train)
 
-        # Backward + Optimize
-        optimizer.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP_NORM)
-        optimizer.step()
-        scheduler.step()
+    # Evaluate on validation set
+    val_pred = model.predict(X_val_scaled)
+    val_accuracy = accuracy_score(y_val, val_pred)
 
-        running_loss += loss.item()
+    # Cross-validation score
+    cv_scores = cross_val_score(model, X_train_scaled, y_train, cv=5, scoring='accuracy')
 
-        # Print progress and calculate accuracies every 1000 steps
-        if (step + 1) % STEPS_TO_LOG == 0:
-            elapsed = time.time() - start_time
-            epoch_elapsed = time.time() - epoch_start_time
-            avg_loss = running_loss / STEPS_TO_LOG
-            # Calculate accuracies on a subset of data (5 batches) for efficiency
-            train_accuracy = calculate_accuracy(
-                model, train_loader, device, max_batches=NUM_TEST_BATCHES
-            )
-            val_accuracy = calculate_accuracy(
-                model, val_loader, device, max_batches=NUM_TEST_BATCHES
-            )
-            test_accuracy = calculate_accuracy(
-                model, test_loader, device, max_batches=NUM_TEST_BATCHES
-            )
+    results[name] = {
+        'validation_accuracy': val_accuracy,
+        'cv_mean': cv_scores.mean(),
+        'cv_std': cv_scores.std(),
+        'model': model
+    }
 
-            # Log to console
-            print(
-                f"Epoch [{epoch + 1}/{NUM_EPOCHS}], "
-                f"Step [{step + 1}/{len(train_loader)}], "
-                f"Loss: {loss.item():.4f}, "
-                f"Total T: {elapsed:.2f}s, "
-                f"Epoch T: {epoch_elapsed:.2f}s, "
-                f"Train Acc: {train_accuracy:.2f}%, "
-                f"Val Acc: {val_accuracy:.2f}%, "
-                f"Test Acc: {test_accuracy:.2f}%"
-            )
+    print(f"{name} - Validation Accuracy: {val_accuracy:.4f}")
+    print(f"{name} - CV Score: {cv_scores.mean():.4f} (+/- {cv_scores.std() * 2:.4f})")
 
-            # Store metrics
-            metrics["epoch"].append(epoch + 1)
-            metrics["step"].append(step + 1)
-            metrics["loss"].append(avg_loss)
-            metrics["train_accuracy"].append(train_accuracy)
-            metrics["val_accuracy"].append(val_accuracy)
-            metrics["test_accuracy"].append(test_accuracy)
+    if val_accuracy > best_score:
+        best_score = val_accuracy
+        best_model = model
 
-            # Save metrics to numpy file
-            np.save(log_file, metrics)
+print(f"\nBest model validation accuracy: {best_score:.4f}")
 
-            # Save checkpoint if we have the best validation accuracy
-            if val_accuracy > best_val_accuracy:
-                best_val_accuracy = val_accuracy
-                perf_string = f"{val_accuracy:.2f}"
-                perf_string = perf_string.replace(".", "_")
-                checkpoint_path = os.path.join(
-                    checkpoint_dir,
-                    f"model_epoch{epoch+1}_step{step+1}_val{perf_string}.pt",
-                )
-                torch.save(
-                    {
-                        "epoch": epoch + 1,
-                        "step": step + 1,
-                        "model_state_dict": model.state_dict(),
-                        "optimizer_state_dict": optimizer.state_dict(),
-                        "loss": avg_loss,
-                        "val_accuracy": val_accuracy,
-                    },
-                    checkpoint_path,
-                )
-                np.save(log_file, metrics)
-                print(f"Saved checkpoint to {checkpoint_path}")
-            running_loss = 0.0
-            model.train()  # Set back to training mode
 
-    # Reset epoch timer and print epoch summary
-    epoch_time = time.time() - epoch_start_time
-    epoch_start_time = time.time()
-    print(f"Epoch {epoch+1} completed in {epoch_time:.2f} seconds")
+# 7. Final evaluation on test set
+print("\nEvaluating on test set...")
+test_pred = best_model.predict(X_test_scaled)
+test_accuracy = accuracy_score(y_test, test_pred)
 
-    # Print total training time at the end
-    total_time = time.time() - start_time
-    hours = total_time // 3600
-    minutes = (total_time % 3600) // 60
-    seconds = total_time % 60
-    print(f"Total training time: {hours:.0f}h {minutes:.0f}m {seconds:.2f}s")
+print(f"\nFinal Test Accuracy: {test_accuracy:.4f}")
+print("\nDetailed Classification Report:")
+print(classification_report(y_test, test_pred))
 
-print("Training finished!")
+# 8. Save results and model performance summary
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+results_file = f"{DATASET_NAME}_results_{timestamp}.json"
 
-# Save final metrics and model
-np.save(log_file, metrics)
-final_checkpoint_path = os.path.join(checkpoint_dir, "model_final.pt")
-torch.save(
-    {
-        "epoch": NUM_EPOCHS,
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-        "loss": avg_loss,
-        "val_accuracy": val_accuracy,
-    },
-    final_checkpoint_path,
-)
+# Prepare results for saving
+final_results = {
+    "timestamp": timestamp,
+    "dataset": DATASET_NAME,
+    "test_accuracy": test_accuracy,
+    "best_model": type(best_model).__name__,
+    "model_results": {}
+}
+
+for name, result in results.items():
+    final_results["model_results"][name] = {
+        "validation_accuracy": result["validation_accuracy"],
+        "cv_mean": result["cv_mean"],
+        "cv_std": result["cv_std"]
+    }
+
+# Save results
+import json
+with open(results_file, 'w') as f:
+    json.dump(final_results, f, indent=2)
+
+print(f"\nResults saved to {results_file}")
+
+# 9. Performance summary
+training_time = time.time() - start_time
+print(f"\nTotal training time: {training_time:.2f} seconds")
+print(f"Best model: {type(best_model).__name__}")
+print(f"Best validation accuracy: {best_score:.4f}")
+print(f"Final test accuracy: {test_accuracy:.4f}")
+
+# 10. Feature importance (if available)
+if hasattr(best_model, 'feature_importances_'):
+    print(f"\nTop 10 most important features:")
+    feature_importance = best_model.feature_importances_
+    top_indices = np.argsort(feature_importance)[-10:][::-1]
+    for i, idx in enumerate(top_indices):
+        print(f"{i+1}. Feature {idx}: {feature_importance[idx]:.4f}")
+
+print("\nTraining completed successfully!")

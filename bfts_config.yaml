@@ -32,10 +32,10 @@ experiment:
 debug:
   stage4: False
 
-# agent hyperparams
+# agent hyperparams (CPU-only processing)
 agent:
   type: parallel
-  num_workers: 4
+  num_workers: 4  # CPU workers for parallel processing
   stages:
     stage1_max_iters: 20
     stage2_max_iters: 12

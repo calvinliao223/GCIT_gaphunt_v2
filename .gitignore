@@ -121,10 +121,19 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
-# Environments
+# Environments (CRITICAL: Never commit API keys)
 .env
+.env.local
+.env.production
+.env.staging
 .venv
 .venv_jax
+
+# API key files and secrets
+*api_key*
+*secret*
+*token*
+secrets.toml
 env/
 venv/
 ENV/

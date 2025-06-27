@@ -38,7 +38,7 @@ This system autonomously generates hypotheses, runs experiments, analyzes data, 
 
 ## Requirements
 
-This code is designed to run on Linux with NVIDIA GPUs using CUDA and PyTorch.
+This code is designed to run on any system with Python 3.11+ and uses CPU-only machine learning libraries.
 
 ### Installation
 
@@ -47,14 +47,11 @@ This code is designed to run on Linux with NVIDIA GPUs using CUDA and PyTorch.
 conda create -n ai_scientist python=3.11
 conda activate ai_scientist
 
-# Install PyTorch with CUDA support (adjust pytorch-cuda version for your setup)
-conda install pytorch torchvision torchaudio pytorch-cuda=12.4 -c pytorch -c nvidia
-
 # Install PDF and LaTeX tools
 conda install anaconda::poppler
 conda install conda-forge::chktex
 
-# Install Python package requirements
+# Install Python package requirements (CPU-only)
 pip install -r requirements.txt
 ```
 

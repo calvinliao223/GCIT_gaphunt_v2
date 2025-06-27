@@ -9,7 +9,7 @@ pymupdf4llm
 seaborn
 # Common Requirements
 numpy
-transformers
+transformers[tf-cpu]
 datasets
 tiktoken
 wandb
@@ -27,3 +27,9 @@ jsonschema
 omegaconf
 botocore
 boto3
+# Machine Learning (CPU-only)
+scikit-learn
+pandas
+scipy
+pillow
+requests

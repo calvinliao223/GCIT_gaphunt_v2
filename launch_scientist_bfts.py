@@ -2,10 +2,10 @@ import os.path as osp
 import json
 import argparse
 import shutil
-import torch
 import os
 import re
 import sys
+import multiprocessing
 from datetime import datetime
 from ai_scientist.llm import create_client
 
@@ -125,10 +125,9 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def get_available_gpus(gpu_ids=None):
-    if gpu_ids is not None:
-        return [int(gpu_id) for gpu_id in gpu_ids.split(",")]
-    return list(range(torch.cuda.device_count()))
+def get_available_cpus():
+    """Get number of available CPU cores for parallel processing"""
+    return multiprocessing.cpu_count()
 
 
 def find_pdf_path_for_review(idea_dir):
@@ -178,9 +177,9 @@ if __name__ == "__main__":
     os.environ["AI_SCIENTIST_ROOT"] = os.path.dirname(os.path.abspath(__file__))
     print(f"Set AI_SCIENTIST_ROOT to {os.environ['AI_SCIENTIST_ROOT']}")
 
-    # Check available GPUs and adjust parallel processes if necessary
-    available_gpus = get_available_gpus()
-    print(f"Using GPUs: {available_gpus}")
+    # Check available CPUs for parallel processing
+    available_cpus = get_available_cpus()
+    print(f"Available CPU cores: {available_cpus}")
 
     with open(args.load_ideas, "r") as f:
         ideas = json.load(f)
