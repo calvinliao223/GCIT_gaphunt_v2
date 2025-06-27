@@ -42,36 +42,50 @@ def setup_environment():
     """Setup environment variables and configuration"""
     print("🎓 GAP HUNTER BOT - WEB INTERFACE")
     print("=" * 50)
-    
-    # SECURITY: Load API keys from environment variables only
+
+    # SECURITY: Load API keys from secure configuration only
     # Never hardcode API keys in source code!
-    from pathlib import Path
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+    try:
+        from config_loader import load_env_file_safely, get_api_key
 
-    # Load from .env file if it exists (development only)
-    env_file = Path(__file__).parent.parent / ".env"
-    if env_file.exists():
-        with open(env_file, "r") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    key, value = line.split("=", 1)
-                    value = value.strip('"\'')
-                    os.environ[key] = value
+        # Load environment variables from .env file if it exists (development)
+        load_env_file_safely()
 
-    # Get API keys from environment variables
-    api_keys = {
-        "GOOGLE_API_KEY": os.getenv("GOOGLE_API_KEY", ""),
-        "S2_API_KEY": os.getenv("S2_API_KEY", ""),
-        "CORE_API_KEY": os.getenv("CORE_API_KEY", ""),
-        "CONTACT_EMAIL": os.getenv("CONTACT_EMAIL", "contact@example.com"),
-        "ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY", ""),
-        "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
-        "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", ""),
-    }
-    
+        # Get API keys securely
+        api_keys = {}
+        required_keys = ["GOOGLE_API_KEY", "S2_API_KEY", "CORE_API_KEY", "CONTACT_EMAIL"]
+        optional_keys = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"]
+
+        # Set required keys
+        for key in required_keys:
+            value = get_api_key(key, required=False)
+            if value:
+                api_keys[key] = value
+            else:
+                api_keys[key] = ""
+
+        # Set optional LLM provider keys
+        for key in optional_keys:
+            value = get_api_key(key, required=False)
+            api_keys[key] = value if value else ""
+
+    except ImportError:
+        print("⚠️ Secure config loader not found, using environment variables directly")
+        # Fallback: Get API keys from environment variables
+        api_keys = {
+            "GOOGLE_API_KEY": os.getenv("GOOGLE_API_KEY", ""),
+            "S2_API_KEY": os.getenv("S2_API_KEY", ""),
+            "CORE_API_KEY": os.getenv("CORE_API_KEY", ""),
+            "CONTACT_EMAIL": os.getenv("CONTACT_EMAIL", "contact@example.com"),
+            "ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY", ""),
+            "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
+            "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", ""),
+        }
+
     for key, value in api_keys.items():
         os.environ[key] = value
-    
+
     print("✅ API keys configured")
     print("✅ Environment ready")
 

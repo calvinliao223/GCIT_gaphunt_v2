@@ -50,20 +50,39 @@ import os
 import sys
 sys.path.append('.')
 
-# Setup API keys
-api_keys = {
-    'GOOGLE_API_KEY': 'AIzaSyBdYRBSsPwg7PVuxVdk_rycUhNYdSmTq3E',
-    'S2_API_KEY': 'pAnb8EMLQU4KwcV9zyyNC33JvwFtpOvL43PsCRzg',
-    'CORE_API_KEY': '94uGwzjrNEOh0TJAod8XH1kcVtSeMyYf',
-    'CONTACT_EMAIL': 'calliaobiz@gmail.com',
-    'ANTHROPIC_API_KEY': os.environ.get('ANTHROPIC_API_KEY', ''),
-    'OPENAI_API_KEY': os.environ.get('OPENAI_API_KEY', ''),
-    'GEMINI_API_KEY': 'AIzaSyBdYRBSsPwg7PVuxVdk_rycUhNYdSmTq3E',
-    'TOPIC': 'medical image classification for disease diagnosis'
-}
+# Setup API keys from secure configuration
+# SECURITY: Never hardcode API keys in source code!
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+try:
+    from config_loader import load_env_file_safely, get_api_key
 
-for key, value in api_keys.items():
-    os.environ[key] = value
+    # Load environment variables from .env file if it exists (development)
+    load_env_file_safely()
+
+    # Get API keys securely
+    required_keys = ['GOOGLE_API_KEY', 'S2_API_KEY', 'CORE_API_KEY', 'CONTACT_EMAIL']
+    optional_keys = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY']
+
+    # Set required keys
+    for key in required_keys:
+        value = get_api_key(key, required=False)
+        if value:
+            os.environ[key] = value
+
+    # Set optional LLM provider keys
+    for key in optional_keys:
+        value = get_api_key(key, required=False)
+        if value:
+            os.environ[key] = value
+
+    # Set default topic if not provided
+    if not os.environ.get('TOPIC'):
+        os.environ['TOPIC'] = 'medical image classification for disease diagnosis'
+
+except ImportError:
+    print("⚠️ Secure config loader not found")
+    print("💡 Please ensure API keys are set as environment variables")
+    print("📖 See .env.example for the required format")
 
 print('🏥 Medical AI Research Starting...')
 exec(open('ai_scientist/ideas/i_cant_believe_its_not_betterrealworld.py').read())

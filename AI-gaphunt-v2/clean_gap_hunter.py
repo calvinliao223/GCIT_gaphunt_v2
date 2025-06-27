@@ -18,16 +18,47 @@ class GapHunterBot:
         self.greeting_shown = False
     
     def setup_api_keys(self):
-        """Setup your API keys"""
-        api_keys = {
-            "S2_API_KEY": "pAnb8EMLQU4KwcV9zyyNC33JvwFtpOvL43PsCRzg",
-            "CORE_API_KEY": "94uGwzjrNEOh0TJAod8XH1kcVtSeMyYf",
-            "GOOGLE_API_KEY": "AIzaSyBdYRBSsPwg7PVuxVdk_rycUhNYdSmTq3E",
-            "CONTACT_EMAIL": "calliaobiz@gmail.com"
-        }
-        
-        for key, value in api_keys.items():
-            os.environ[key] = value
+        """Setup API keys from secure configuration"""
+        # Import secure config loader
+        sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+        try:
+            from config_loader import load_env_file_safely, get_api_key
+
+            # Load environment variables from .env file if it exists (development)
+            load_env_file_safely()
+
+            # Verify required API keys are available
+            required_keys = ["S2_API_KEY", "CORE_API_KEY", "GOOGLE_API_KEY", "CONTACT_EMAIL"]
+            missing_keys = []
+
+            for key in required_keys:
+                value = get_api_key(key, required=False)
+                if not value:
+                    missing_keys.append(key)
+                else:
+                    os.environ[key] = value
+
+            if missing_keys:
+                print(f"⚠️ Missing API keys: {', '.join(missing_keys)}")
+                print("💡 Please set these environment variables or create a .env file")
+                print("📖 See .env.example for the required format")
+
+        except ImportError:
+            print("⚠️ Secure config loader not found, using fallback method")
+            # Fallback: try to get from environment variables directly
+            required_keys = ["S2_API_KEY", "CORE_API_KEY", "GOOGLE_API_KEY", "CONTACT_EMAIL"]
+            missing_keys = []
+
+            for key in required_keys:
+                value = os.environ.get(key)
+                if not value:
+                    missing_keys.append(key)
+
+            if missing_keys:
+                print(f"❌ Missing required environment variables: {', '.join(missing_keys)}")
+                print("💡 Please set these environment variables or create a .env file")
+                print("📖 See .env.example for the required format")
+                sys.exit(1)
     
     def show_greeting(self):
         """Show first-turn greeting"""
@@ -39,61 +70,137 @@ class GapHunterBot:
             self.greeting_shown = True
     
     def s2_search(self, query, limit=5):
-        """Search Semantic Scholar for papers"""
+        """Search Semantic Scholar for papers with improved error handling"""
+        if not query or not query.strip():
+            print("⚠️ Empty query provided to S2 search")
+            return []
+
+        if not os.environ.get('S2_API_KEY'):
+            print("⚠️ S2_API_KEY not configured")
+            return []
+
         try:
             url = "https://api.semanticscholar.org/graph/v1/paper/search"
             headers = {'x-api-key': os.environ.get('S2_API_KEY')}
             params = {
-                'query': query,
-                'limit': limit,
+                'query': query.strip(),
+                'limit': min(max(1, limit), 100),  # Validate limit
                 'sort': 'publicationDate:desc',
                 'fields': 'title,authors,year,abstract,journal,url'
             }
-            
-            response = requests.get(url, headers=headers, params=params, timeout=10)
+
+            response = requests.get(url, headers=headers, params=params, timeout=15)
             time.sleep(1)  # ≤ 1 req/sec
-            
+
             if response.status_code == 200:
                 data = response.json()
-                return data.get('data', [])
+                papers = data.get('data', [])
+                print(f"✅ S2 API: Retrieved {len(papers)} papers")
+                return papers
+            elif response.status_code == 429:
+                print("⚠️ S2 API rate limit exceeded")
+                return []
+            elif response.status_code == 403:
+                print("⚠️ S2 API key invalid or expired")
+                return []
+            else:
+                print(f"⚠️ S2 API error: {response.status_code}")
+                return []
+
+        except requests.exceptions.Timeout:
+            print("⚠️ S2 API timeout - service may be slow")
+            return []
+        except requests.exceptions.ConnectionError:
+            print("⚠️ S2 API connection error - check internet connection")
+            return []
         except Exception as e:
-            print(f"S2 search error: {e}")
-        return []
+            print(f"⚠️ S2 search unexpected error: {e}")
+            return []
     
     def core_search(self, query, page_size=5):
-        """Search CORE for papers"""
+        """Search CORE for papers with improved error handling"""
+        if not query or not query.strip():
+            print("⚠️ Empty query provided to CORE search")
+            return []
+
+        if not os.environ.get('CORE_API_KEY'):
+            print("⚠️ CORE_API_KEY not configured")
+            return []
+
         try:
             url = "https://api.core.ac.uk/v3/search/works"
             headers = {'Authorization': f'Bearer {os.environ.get("CORE_API_KEY")}'}
-            params = {'q': query, 'limit': page_size}
-            
-            response = requests.get(url, headers=headers, params=params, timeout=10)
+            params = {
+                'q': query.strip(),
+                'limit': min(max(1, page_size), 100)  # Validate page_size
+            }
+
+            response = requests.get(url, headers=headers, params=params, timeout=15)
+
             if response.status_code == 200:
                 data = response.json()
-                return data.get('results', [])
+                papers = data.get('results', [])
+                print(f"✅ CORE API: Retrieved {len(papers)} papers")
+                return papers
+            elif response.status_code == 429:
+                print("⚠️ CORE API rate limit exceeded")
+                return []
+            elif response.status_code == 403:
+                print("⚠️ CORE API key invalid or expired")
+                return []
+            else:
+                print(f"⚠️ CORE API error: {response.status_code}")
+                return []
+
+        except requests.exceptions.Timeout:
+            print("⚠️ CORE API timeout - service may be slow")
+            return []
+        except requests.exceptions.ConnectionError:
+            print("⚠️ CORE API connection error - check internet connection")
+            return []
         except Exception as e:
-            print(f"CORE search error: {e}")
-        return []
+            print(f"⚠️ CORE search unexpected error: {e}")
+            return []
     
     def crossref_search(self, query, rows=5):
-        """Search Crossref for papers"""
+        """Search Crossref for papers with improved error handling"""
+        if not query or not query.strip():
+            print("⚠️ Empty query provided to Crossref search")
+            return []
+
         try:
             url = "https://api.crossref.org/works"
             params = {
-                'query': query,
-                'rows': rows,
+                'query': query.strip(),
+                'rows': min(max(1, rows), 1000),  # Validate rows
                 'sort': 'published',
                 'order': 'desc',
-                'mailto': os.environ.get('CONTACT_EMAIL')
+                'mailto': os.environ.get('CONTACT_EMAIL', 'contact@example.com')
             }
-            
-            response = requests.get(url, params=params, timeout=10)
+
+            response = requests.get(url, params=params, timeout=15)
+
             if response.status_code == 200:
                 data = response.json()
-                return data.get('message', {}).get('items', [])
+                papers = data.get('message', {}).get('items', [])
+                print(f"✅ Crossref API: Retrieved {len(papers)} papers")
+                return papers
+            elif response.status_code == 429:
+                print("⚠️ Crossref API rate limit exceeded")
+                return []
+            else:
+                print(f"⚠️ Crossref API error: {response.status_code}")
+                return []
+
+        except requests.exceptions.Timeout:
+            print("⚠️ Crossref API timeout - service may be slow")
+            return []
+        except requests.exceptions.ConnectionError:
+            print("⚠️ Crossref API connection error - check internet connection")
+            return []
         except Exception as e:
-            print(f"Crossref search error: {e}")
-        return []
+            print(f"⚠️ Crossref search unexpected error: {e}")
+            return []
     
     def filter_recent_papers(self, papers):
         """Filter to papers ≤ 5 years ago (or include if year unknown)"""
@@ -335,7 +442,21 @@ class GapHunterBot:
         }
 
     def hunt_gaps(self, query):
-        """Main gap hunting workflow"""
+        """Main gap hunting workflow with input validation"""
+        # Input validation
+        if not query:
+            print("❌ Error: Empty query provided")
+            return [{"error": "Please provide a research topic"}]
+
+        query = query.strip()
+        if len(query) < 3:
+            print("❌ Error: Query too short")
+            return [{"error": "Please provide a more detailed research topic (at least 3 characters)"}]
+
+        if len(query) > 200:
+            print("⚠️ Warning: Query very long, truncating...")
+            query = query[:200]
+
         print(f"🔍 Workflow: Searching for research gaps in '{query}'")
 
         # STEP 1: Retrieve papers

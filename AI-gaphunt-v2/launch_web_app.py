@@ -43,16 +43,45 @@ def setup_environment():
     print("🎓 GAP HUNTER BOT - WEB INTERFACE")
     print("=" * 50)
     
-    # Setup API keys
-    api_keys = {
-        "GOOGLE_API_KEY": "AIzaSyBdYRBSsPwg7PVuxVdk_rycUhNYdSmTq3E",
-        "S2_API_KEY": "pAnb8EMLQU4KwcV9zyyNC33JvwFtpOvL43PsCRzg",
-        "CORE_API_KEY": "94uGwzjrNEOh0TJAod8XH1kcVtSeMyYf",
-        "CONTACT_EMAIL": "calliaobiz@gmail.com",
-        "ANTHROPIC_API_KEY": "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",
-        "OPENAI_API_KEY": "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",
-        "GEMINI_API_KEY": "AIzaSyBdYRBSsPwg7PVuxVdk_rycUhNYdSmTq3E",
-    }
+    # SECURITY: Load API keys from secure configuration only
+    # Never hardcode API keys in source code!
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+    try:
+        from config_loader import load_env_file_safely, get_api_key
+
+        # Load environment variables from .env file if it exists (development)
+        load_env_file_safely()
+
+        # Get API keys securely
+        api_keys = {}
+        required_keys = ["GOOGLE_API_KEY", "S2_API_KEY", "CORE_API_KEY", "CONTACT_EMAIL"]
+        optional_keys = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"]
+
+        # Set required keys
+        for key in required_keys:
+            value = get_api_key(key, required=False)
+            if value:
+                api_keys[key] = value
+            else:
+                api_keys[key] = ""
+
+        # Set optional LLM provider keys
+        for key in optional_keys:
+            value = get_api_key(key, required=False)
+            api_keys[key] = value if value else ""
+
+    except ImportError:
+        print("⚠️ Secure config loader not found, using environment variables directly")
+        # Fallback: Get API keys from environment variables
+        api_keys = {
+            "GOOGLE_API_KEY": os.getenv("GOOGLE_API_KEY", ""),
+            "S2_API_KEY": os.getenv("S2_API_KEY", ""),
+            "CORE_API_KEY": os.getenv("CORE_API_KEY", ""),
+            "CONTACT_EMAIL": os.getenv("CONTACT_EMAIL", "contact@example.com"),
+            "ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY", ""),
+            "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
+            "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", ""),
+        }
     
     for key, value in api_keys.items():
         os.environ[key] = value

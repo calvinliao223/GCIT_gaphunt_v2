@@ -36,19 +36,47 @@ def setup_environment():
             else:
                 print(f"❌ Failed to install {package}")
 
-    # Setup API keys for research databases
-    api_keys = {
-        "GOOGLE_API_KEY": "AIzaSyBdYRBSsPwg7PVuxVdk_rycUhNYdSmTq3E",
-        "S2_API_KEY": "pAnb8EMLQU4KwcV9zyyNC33JvwFtpOvL43PsCRzg",
-        "CORE_API_KEY": "94uGwzjrNEOh0TJAod8XH1kcVtSeMyYf",
-        "CONTACT_EMAIL": "calliaobiz@gmail.com",
-        "ANTHROPIC_API_KEY": "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",
-        "OPENAI_API_KEY": "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",
-        "GEMINI_API_KEY": "AIzaSyBdYRBSsPwg7PVuxVdk_rycUhNYdSmTq3E",
-    }
+    # Setup API keys from secure configuration
+    sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+    try:
+        from config_loader import load_env_file_safely, get_api_key
 
-    for key, value in api_keys.items():
-        os.environ[key] = value
+        # Load environment variables from .env file if it exists (development)
+        load_env_file_safely()
+
+        # Get API keys securely
+        required_keys = ["GOOGLE_API_KEY", "S2_API_KEY", "CORE_API_KEY", "CONTACT_EMAIL"]
+        optional_keys = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"]
+
+        # Set required keys
+        missing_keys = []
+        for key in required_keys:
+            value = get_api_key(key, required=False)
+            if value:
+                os.environ[key] = value
+            else:
+                missing_keys.append(key)
+
+        # Set optional LLM provider keys
+        llm_providers_available = 0
+        for key in optional_keys:
+            value = get_api_key(key, required=False)
+            if value:
+                os.environ[key] = value
+                llm_providers_available += 1
+
+        if missing_keys:
+            print(f"⚠️ Missing required API keys: {', '.join(missing_keys)}")
+            print("💡 Please set these environment variables or create a .env file")
+
+        if llm_providers_available == 0:
+            print("⚠️ No LLM provider API keys found")
+            print("💡 Please set at least one: OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY")
+
+    except ImportError:
+        print("⚠️ Secure config loader not found")
+        print("💡 Please ensure the src/config_loader.py file exists")
+        print("📖 Using environment variables directly")
 
     print("✅ Research API keys configured")
     print("✅ Ready for academic research gap hunting")

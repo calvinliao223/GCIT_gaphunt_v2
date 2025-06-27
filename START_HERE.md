@@ -117,13 +117,16 @@ You need at least one LLM provider API key:
 
 ## � Installation
 
-### **Option 1: Automatic Setup** (Recommended)
+### **Option 1: Secure Setup** (Recommended)
 ```bash
 # Clone or download the project
-cd AI-Scientist-v2
+cd AI-gaphunt-v2
+
+# Set up API keys securely (interactive)
+python AI-gaphunt-v2/setup_api_keys.py
 
 # Run the launcher (installs dependencies automatically)
-python launch_web_app.py
+python web/launch_web_app.py
 ```
 
 ### **Option 2: Manual Installation**
@@ -131,8 +134,12 @@ python launch_web_app.py
 # Install dependencies
 pip install streamlit plotly pyyaml requests pandas
 
+# Set up environment variables (see .env.example)
+cp .env.example .env
+# Edit .env file with your API keys
+
 # Launch the application
-python launch_web_app.py
+python web/launch_web_app.py
 ```
 
 ### **Option 3: Shell Script** (Mac/Linux)
