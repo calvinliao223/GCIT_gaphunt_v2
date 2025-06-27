@@ -25,16 +25,25 @@ class GapHunterBot:
         self.greeting_shown = False
     
     def setup_api_keys(self):
-        """Setup your API keys"""
-        api_keys = {
-            "S2_API_KEY": "pAnb8EMLQU4KwcV9zyyNC33JvwFtpOvL43PsCRzg",
-            "CORE_API_KEY": "94uGwzjrNEOh0TJAod8XH1kcVtSeMyYf",
-            "GOOGLE_API_KEY": "AIzaSyBdYRBSsPwg7PVuxVdk_rycUhNYdSmTq3E",
-            "CONTACT_EMAIL": "calliaobiz@gmail.com"
-        }
-        
-        for key, value in api_keys.items():
-            os.environ[key] = value
+        """Setup API keys from secure configuration"""
+        # SECURITY: Load API keys from environment variables only
+        # Never hardcode API keys in source code!
+
+        required_keys = ["S2_API_KEY", "CORE_API_KEY", "GOOGLE_API_KEY", "CONTACT_EMAIL"]
+        missing_keys = []
+
+        for key in required_keys:
+            value = os.environ.get(key)
+            if not value:
+                missing_keys.append(key)
+
+        if missing_keys:
+            print(f"❌ Missing required environment variables: {', '.join(missing_keys)}")
+            print("💡 Please set these environment variables or create a .env file")
+            print("📖 Run: python AI-gaphunt-v2/setup_api_keys.py for secure setup")
+            sys.exit(1)
+
+        print("✅ All required API keys are configured")
     
     def show_greeting(self):
         """Show first-turn greeting"""

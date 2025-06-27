@@ -20,9 +20,9 @@ I've cleaned up the AI Scientist project to focus **ONLY** on academic research 
 3. **`START_HERE.md`** - Clean documentation
 
 ### 🔑 **Your API Keys (Pre-configured):**
-- ✅ Semantic Scholar: `pAnb8EMLQU4KwcV9zyyNC33JvwFtpOvL43PsCRzg`
-- ✅ CORE: `94uGwzjrNEOh0TJAod8XH1kcVtSeMyYf`
-- ✅ Google: `AIzaSyBdYRBSsPwg7PVuxVdk_rycUhNYdSmTq3E`
+- ✅ Semantic Scholar: `[SECURE - Set via environment variables]`
+- ✅ CORE: `[SECURE - Set via environment variables]`
+- ✅ Google: `[SECURE - Set via environment variables]`
 - ✅ Contact: `calliaobiz@gmail.com`
 
 ## 🚀 **How to Run (2 Simple Options):**
