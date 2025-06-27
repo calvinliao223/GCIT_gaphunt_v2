@@ -1,0 +1,39 @@
+# LLM APIs
+anthropic
+backoff
+openai
+# Viz
+matplotlib
+pypdf
+pymupdf4llm
+seaborn
+# Common Requirements
+numpy
+transformers[tf-cpu]
+datasets
+tiktoken
+wandb
+tqdm
+rich
+humanize
+dataclasses-json
+funcy
+black
+genson
+shutup
+python-igraph
+coolname
+jsonschema
+omegaconf
+botocore
+boto3
+# Machine Learning (CPU-only)
+scikit-learn
+pandas
+scipy
+pillow
+requests
+# Web Interface
+streamlit
+pyyaml
+plotly
