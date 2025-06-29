@@ -11,55 +11,86 @@ import random
 import requests
 import time
 from datetime import datetime
+import math
+
+# Import Google Scholar fallback
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'scripts'))
+try:
+    from google_search_fallback import GoogleScholarFallback
+    GOOGLE_FALLBACK_AVAILABLE = True
+except ImportError:
+    GOOGLE_FALLBACK_AVAILABLE = False
+    print("⚠️ Google Scholar fallback not available")
 
 class GapHunterBot:
     def __init__(self):
         self.setup_api_keys()
         self.greeting_shown = False
+        # Initialize Google Scholar fallback if available
+        self.google_fallback = GoogleScholarFallback() if GOOGLE_FALLBACK_AVAILABLE else None
     
     def setup_api_keys(self):
         """Setup API keys from secure configuration"""
-        # Import secure config loader
-        sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
-        try:
-            from config_loader import load_env_file_safely, get_api_key
+        # Try to load .env file if it exists
+        env_file = os.path.join(os.path.dirname(__file__), '.env')
+        if os.path.exists(env_file):
+            print("🔧 Loading local .env file for development")
+            with open(env_file, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        value = value.strip('"\'')
+                        if key not in os.environ:
+                            os.environ[key] = value
 
-            # Load environment variables from .env file if it exists (development)
-            load_env_file_safely()
+        # Verify required API keys are available
+        required_keys = ["S2_API_KEY", "CORE_API_KEY", "GOOGLE_API_KEY", "CONTACT_EMAIL"]
+        missing_keys = []
 
-            # Verify required API keys are available
-            required_keys = ["S2_API_KEY", "CORE_API_KEY", "GOOGLE_API_KEY", "CONTACT_EMAIL"]
-            missing_keys = []
+        for key in required_keys:
+            value = os.environ.get(key)
+            if not value:
+                missing_keys.append(key)
 
-            for key in required_keys:
-                value = get_api_key(key, required=False)
-                if not value:
-                    missing_keys.append(key)
+        if missing_keys:
+            print(f"❌ Missing required environment variables: {', '.join(missing_keys)}")
+            print("💡 Please set these environment variables or create a .env file")
+            print("📖 See .env.example for the required format")
+            sys.exit(1)
+        else:
+            print("✅ All required API keys configured")
+
+    def retry_with_backoff(self, func, max_retries=3, base_delay=1):
+        """Retry function with exponential backoff"""
+        for attempt in range(max_retries):
+            try:
+                result = func()
+                if result:  # If we got results, return them
+                    return result
+                elif attempt < max_retries - 1:  # If no results but not last attempt
+                    delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                    print(f"   Retrying in {delay:.1f} seconds... (attempt {attempt + 2}/{max_retries})")
+                    time.sleep(delay)
+            except requests.exceptions.Timeout:
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)
+                    print(f"   Timeout, retrying in {delay:.1f} seconds... (attempt {attempt + 2}/{max_retries})")
+                    time.sleep(delay)
                 else:
-                    os.environ[key] = value
+                    print("   Final timeout, giving up")
+            except requests.exceptions.ConnectionError:
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)
+                    print(f"   Connection error, retrying in {delay:.1f} seconds... (attempt {attempt + 2}/{max_retries})")
+                    time.sleep(delay)
+                else:
+                    print("   Final connection error, giving up")
+            except Exception as e:
+                print(f"   Unexpected error: {e}")
+                break
+        return []
 
-            if missing_keys:
-                print(f"⚠️ Missing API keys: {', '.join(missing_keys)}")
-                print("💡 Please set these environment variables or create a .env file")
-                print("📖 See .env.example for the required format")
-
-        except ImportError:
-            print("⚠️ Secure config loader not found, using fallback method")
-            # Fallback: try to get from environment variables directly
-            required_keys = ["S2_API_KEY", "CORE_API_KEY", "GOOGLE_API_KEY", "CONTACT_EMAIL"]
-            missing_keys = []
-
-            for key in required_keys:
-                value = os.environ.get(key)
-                if not value:
-                    missing_keys.append(key)
-
-            if missing_keys:
-                print(f"❌ Missing required environment variables: {', '.join(missing_keys)}")
-                print("💡 Please set these environment variables or create a .env file")
-                print("📖 See .env.example for the required format")
-                sys.exit(1)
-    
     def show_greeting(self):
         """Show first-turn greeting"""
         if not self.greeting_shown:
@@ -79,7 +110,7 @@ class GapHunterBot:
             print("⚠️ S2_API_KEY not configured")
             return []
 
-        try:
+        def _s2_api_call():
             url = "https://api.semanticscholar.org/graph/v1/paper/search"
             headers = {'x-api-key': os.environ.get('S2_API_KEY')}
             params = {
@@ -99,7 +130,8 @@ class GapHunterBot:
                 return papers
             elif response.status_code == 429:
                 print("⚠️ S2 API rate limit exceeded")
-                return []
+                time.sleep(5)  # Wait longer for rate limits
+                raise requests.exceptions.Timeout("Rate limited")
             elif response.status_code == 403:
                 print("⚠️ S2 API key invalid or expired")
                 return []
@@ -107,15 +139,7 @@ class GapHunterBot:
                 print(f"⚠️ S2 API error: {response.status_code}")
                 return []
 
-        except requests.exceptions.Timeout:
-            print("⚠️ S2 API timeout - service may be slow")
-            return []
-        except requests.exceptions.ConnectionError:
-            print("⚠️ S2 API connection error - check internet connection")
-            return []
-        except Exception as e:
-            print(f"⚠️ S2 search unexpected error: {e}")
-            return []
+        return self.retry_with_backoff(_s2_api_call)
     
     def core_search(self, query, page_size=5):
         """Search CORE for papers with improved error handling"""
@@ -442,16 +466,16 @@ class GapHunterBot:
         }
 
     def hunt_gaps(self, query):
-        """Main gap hunting workflow with input validation"""
+        """Main gap hunting workflow with enhanced error handling"""
         # Input validation
         if not query:
             print("❌ Error: Empty query provided")
-            return [{"error": "Please provide a research topic"}]
+            return [{"error": "Please provide a research topic", "error_type": "validation", "suggestion": "Try entering a specific research area like 'machine learning' or 'computer vision'"}]
 
         query = query.strip()
         if len(query) < 3:
             print("❌ Error: Query too short")
-            return [{"error": "Please provide a more detailed research topic (at least 3 characters)"}]
+            return [{"error": "Please provide a more detailed research topic (at least 3 characters)", "error_type": "validation", "suggestion": "Add more specific terms to your query"}]
 
         if len(query) > 200:
             print("⚠️ Warning: Query very long, truncating...")
@@ -459,25 +483,70 @@ class GapHunterBot:
 
         print(f"🔍 Workflow: Searching for research gaps in '{query}'")
 
-        # STEP 1: Retrieve papers
+        # STEP 1: Retrieve papers with enhanced error tracking
         all_papers = []
+        api_failures = 0
+        api_results = {}
 
         print("📚 Searching Semantic Scholar...")
         s2_papers = self.s2_search(query)
         all_papers.extend(s2_papers)
+        api_results['semantic_scholar'] = len(s2_papers)
+        if len(s2_papers) == 0:
+            api_failures += 1
         print(f"   Found {len(s2_papers)} papers from Semantic Scholar")
 
         print("📚 Searching CORE...")
         core_papers = self.core_search(query)
         all_papers.extend(core_papers)
+        api_results['core'] = len(core_papers)
+        if len(core_papers) == 0:
+            api_failures += 1
         print(f"   Found {len(core_papers)} papers from CORE")
 
         print("📚 Searching Crossref...")
         crossref_papers = self.crossref_search(query)
         all_papers.extend(crossref_papers)
+        api_results['crossref'] = len(crossref_papers)
+        if len(crossref_papers) == 0:
+            api_failures += 1
         print(f"   Found {len(crossref_papers)} papers from Crossref")
 
         print(f"📊 Total papers retrieved: {len(all_papers)}")
+
+        # Enhanced error handling for API failures with Google Scholar fallback
+        if api_failures == 3:
+            if self.google_fallback and len(all_papers) == 0:
+                print("🔄 All primary APIs failed, trying Google Scholar fallback...")
+                try:
+                    google_papers = self.google_fallback.search_papers(query, 5)
+                    if google_papers:
+                        all_papers.extend(google_papers)
+                        print(f"✅ Google Scholar fallback: Retrieved {len(google_papers)} papers")
+                    else:
+                        print("⚠️ Google Scholar fallback also returned no results")
+                except Exception as e:
+                    print(f"⚠️ Google Scholar fallback failed: {e}")
+
+            if len(all_papers) == 0:
+                return [{
+                    "error": "All research databases are currently unavailable",
+                    "error_type": "api_failure",
+                    "suggestion": "Please check your internet connection and try again in a few minutes",
+                    "details": "Semantic Scholar, CORE, Crossref, and Google Scholar all failed to respond"
+                }]
+        elif api_failures == 2:
+            working_apis = [api for api, count in api_results.items() if count > 0]
+            print(f"⚠️ Warning: 2 out of 3 APIs failed, continuing with {working_apis[0]}")
+
+        if len(all_papers) == 0:
+            return [{
+                "error": "No papers found for this research topic",
+                "error_type": "no_results",
+                "suggestion": "Try using broader search terms or check spelling",
+                "query_attempted": query,
+                "apis_checked": list(api_results.keys())
+            }]
 
         # Filter recent papers (very lenient - include most papers)
         recent_papers = []
@@ -552,7 +621,13 @@ class GapHunterBot:
             relevant_papers = recent_papers
 
         if len(relevant_papers) < 1:
-            return [{"error": "Insufficient data for this topic"}]
+            return [{
+                "error": "No relevant recent papers found for this research topic",
+                "error_type": "insufficient_data",
+                "suggestion": "Try using more general terms or a different research area",
+                "details": f"Found {len(all_papers)} total papers, but none were relevant or recent enough",
+                "query_attempted": query
+            }]
 
         # Process papers
         results = []
@@ -592,41 +667,82 @@ class GapHunterBot:
 
         return results
 
+def search_single_topic(topic):
+    """Search for research gaps for a single topic (non-interactive)"""
+    bot = GapHunterBot()
+    results = bot.hunt_gaps(topic)
+
+    print(f"\n📋 RESEARCH GAPS FOR '{topic}':")
+    print("─" * 40)
+
+    for result in results:
+        print(yaml.dump(result, default_flow_style=False, allow_unicode=True))
+        print("─" * 20)
+
+    return results
+
 def main():
     """Main function - ONLY Gap Hunter Bot"""
     print("🎓 GAP HUNTER BOT - Academic Research Idea Development")
     print("=" * 60)
-    
+
     bot = GapHunterBot()
     bot.show_greeting()
     
+    # Check if running in interactive mode
+    import sys
+    if not sys.stdin.isatty():
+        print("⚠️ Non-interactive mode detected. Use the web interface or run in an interactive terminal.")
+        print("💡 To test: python clean_gap_hunter.py")
+        print("🌐 Web interface: streamlit run ../web/streamlit_app.py")
+        return
+
     while True:
         try:
             query = input("\n🎯 Enter research topic: ").strip()
-            
+
             if query.lower() in ['quit', 'exit', 'q']:
                 print("👋 Goodbye!")
                 break
-            
+
             if not query:
                 continue
-            
+
             # Hunt for research gaps
             results = bot.hunt_gaps(query)
-            
+
             # Output in YAML format
             print("\n📋 RESEARCH GAPS (YAML):")
             print("─" * 40)
-            
+
             for result in results:
                 print(yaml.dump(result, default_flow_style=False, allow_unicode=True))
                 print("─" * 20)
-            
+
         except KeyboardInterrupt:
             print("\n\n👋 Goodbye!")
             break
+        except EOFError:
+            print("\n⚠️ No input available (EOF). Exiting...")
+            print("💡 Run in an interactive terminal or use the web interface.")
+            break
         except Exception as e:
             print(f"❌ Error: {e}")
+            # Prevent infinite loops on persistent errors
+            import time
+            time.sleep(1)
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    # Check for command line arguments
+    if len(sys.argv) > 1:
+        # Non-interactive mode with command line argument
+        topic = " ".join(sys.argv[1:])
+        print("🎓 GAP HUNTER BOT - Academic Research Idea Development")
+        print("=" * 60)
+        print(f"🔍 Searching for research gaps in: '{topic}'")
+        search_single_topic(topic)
+    else:
+        # Interactive mode
+        main()

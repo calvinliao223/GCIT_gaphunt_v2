@@ -17,12 +17,18 @@ import sys
 import os
 from pathlib import Path
 
-# Import secure configuration loader
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
-from config_loader import load_env_file_safely, display_security_status
-
-# Load environment variables securely
-load_env_file_safely()
+# Load environment variables from .env file
+env_file = Path(__file__).parent / '.env'
+if env_file.exists():
+    print("🔧 Loading local .env file for development")
+    with open(env_file, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, value = line.split('=', 1)
+                value = value.strip('"\'')
+                if key not in os.environ:
+                    os.environ[key] = value
 
 # Import the existing Gap Hunter Bot logic
 sys.path.append('.')
