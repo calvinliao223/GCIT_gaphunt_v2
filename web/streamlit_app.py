@@ -35,7 +35,14 @@ sys.path.append('.')
 sys.path.append('src')
 sys.path.append('scripts')
 from clean_gap_hunter import GapHunterBot
-from ai_scientist.llm_providers import LLMProviderManager
+
+# Try to import LLM providers (optional)
+try:
+    from ai_scientist.llm_providers import LLMProviderManager
+    LLM_PROVIDERS_AVAILABLE = True
+except ImportError:
+    LLM_PROVIDERS_AVAILABLE = False
+    print("⚠️ LLM providers not available - using basic functionality")
 
 # Page configuration
 st.set_page_config(
@@ -133,16 +140,65 @@ def initialize_session_state():
     if 'bot' not in st.session_state:
         st.session_state.bot = GapHunterBot()
     if 'llm_manager' not in st.session_state:
-        # Use absolute path for config file
-        config_path = Path(__file__).parent.parent / "config" / "bfts_config.yaml"
-        st.session_state.llm_manager = LLMProviderManager(str(config_path))
+        if LLM_PROVIDERS_AVAILABLE:
+            # Use absolute path for config file
+            config_path = Path(__file__).parent.parent / "config" / "bfts_config.yaml"
+            st.session_state.llm_manager = LLMProviderManager(str(config_path))
+        else:
+            st.session_state.llm_manager = None
     if 'selected_provider' not in st.session_state:
-        st.session_state.selected_provider = st.session_state.llm_manager.providers_config.get('default_provider', 'openai')
+        if st.session_state.llm_manager:
+            st.session_state.selected_provider = st.session_state.llm_manager.providers_config.get('default_provider', 'openai')
+        else:
+            st.session_state.selected_provider = 'openai'
     if 'selected_model' not in st.session_state:
-        provider_info = st.session_state.llm_manager.get_provider_info(st.session_state.selected_provider)
-        st.session_state.selected_model = provider_info.get('default_model', '')
+        if st.session_state.llm_manager:
+            provider_info = st.session_state.llm_manager.get_provider_info(st.session_state.selected_provider)
+            st.session_state.selected_model = provider_info.get('default_model', '')
+        else:
+            st.session_state.selected_model = 'gpt-3.5-turbo'
     if 'debug_info' not in st.session_state:
         st.session_state.debug_info = debug_environment()
+
+def display_simple_security_status():
+    """Display simplified security status in Streamlit interface"""
+    with st.sidebar.expander("🔐 Security Status"):
+        # Check core API keys
+        core_keys = {
+            "S2_API_KEY": "Semantic Scholar API",
+            "CORE_API_KEY": "CORE API",
+            "GOOGLE_API_KEY": "Google API"
+        }
+
+        st.write("**Core APIs:**")
+        core_available = 0
+        for key, description in core_keys.items():
+            available = bool(os.environ.get(key))
+            icon = "✅" if available else "❌"
+            st.write(f"{icon} {description}")
+            if available:
+                core_available += 1
+
+        # Check LLM provider keys
+        llm_keys = {
+            "OPENAI_API_KEY": "OpenAI",
+            "ANTHROPIC_API_KEY": "Anthropic Claude",
+            "GEMINI_API_KEY": "Google Gemini"
+        }
+
+        st.write("**LLM Providers:**")
+        llm_available = 0
+        for key, description in llm_keys.items():
+            available = bool(os.environ.get(key))
+            icon = "✅" if available else "❌"
+            st.write(f"{icon} {description}")
+            if available:
+                llm_available += 1
+
+        if core_available == len(core_keys) and llm_available > 0:
+            st.success(f"🔐 Secure: {llm_available} LLM provider(s) available")
+        else:
+            st.warning("⚠️ Some API keys missing")
 
 def display_header():
     """Display the main header and introduction"""
@@ -164,63 +220,67 @@ def display_sidebar():
     """Display sidebar with search options and history"""
     st.sidebar.markdown("## 🔧 Search Options")
 
-    # LLM Provider Selection
+    # LLM Provider Selection (if available)
     st.sidebar.markdown("### 🤖 LLM Provider")
 
-    # Get available providers
-    available_providers = st.session_state.llm_manager.get_available_providers()
-    provider_names = {}
-    for provider in available_providers:
-        info = st.session_state.llm_manager.get_provider_info(provider)
-        provider_names[provider] = info.get('name', provider.title())
+    if LLM_PROVIDERS_AVAILABLE and st.session_state.llm_manager:
+        # Get available providers
+        available_providers = st.session_state.llm_manager.get_available_providers()
+        provider_names = {}
+        for provider in available_providers:
+            info = st.session_state.llm_manager.get_provider_info(provider)
+            provider_names[provider] = info.get('name', provider.title())
 
-    # Provider selection
-    selected_provider = st.sidebar.selectbox(
-        "Choose LLM Provider:",
-        options=available_providers,
-        format_func=lambda x: provider_names.get(x, x),
-        index=available_providers.index(st.session_state.selected_provider) if st.session_state.selected_provider in available_providers else 0,
-        key="provider_select"
-    )
-
-    # Update provider if changed
-    if selected_provider != st.session_state.selected_provider:
-        st.session_state.selected_provider = selected_provider
-        provider_info = st.session_state.llm_manager.get_provider_info(selected_provider)
-        st.session_state.selected_model = provider_info.get('default_model', '')
-        st.rerun()
-
-    # Model selection for the chosen provider
-    available_models = st.session_state.llm_manager.get_provider_models(selected_provider)
-    if available_models:
-        selected_model = st.sidebar.selectbox(
-            "Choose Model:",
-            options=available_models,
-            index=available_models.index(st.session_state.selected_model) if st.session_state.selected_model in available_models else 0,
-            key="model_select"
+        # Provider selection
+        selected_provider = st.sidebar.selectbox(
+            "Choose LLM Provider:",
+            options=available_providers,
+            format_func=lambda x: provider_names.get(x, x),
+            index=available_providers.index(st.session_state.selected_provider) if st.session_state.selected_provider in available_providers else 0,
+            key="provider_select"
         )
-        st.session_state.selected_model = selected_model
 
-    # Provider availability status
-    provider_available = st.session_state.llm_manager.check_provider_availability(selected_provider)
-    if provider_available:
-        st.sidebar.success(f"✅ {provider_names[selected_provider]} Available")
-    else:
-        st.sidebar.error(f"❌ {provider_names[selected_provider]} Unavailable")
-        provider_info = st.session_state.llm_manager.get_provider_info(selected_provider)
-        api_key_env = provider_info.get('api_key_env', '')
-        if api_key_env:
-            st.sidebar.warning(f"Please set {api_key_env} environment variable")
+        # Update provider if changed
+        if selected_provider != st.session_state.selected_provider:
+            st.session_state.selected_provider = selected_provider
+            provider_info = st.session_state.llm_manager.get_provider_info(selected_provider)
+            st.session_state.selected_model = provider_info.get('default_model', '')
+            st.rerun()
 
-    # Save preferences button
-    if st.sidebar.button("💾 Save as Default", help="Save current provider and model as default"):
-        if st.session_state.llm_manager.save_user_preferences(selected_provider, st.session_state.selected_model):
-            st.sidebar.success("✅ Preferences saved!")
+        # Model selection for the chosen provider
+        available_models = st.session_state.llm_manager.get_provider_models(selected_provider)
+        if available_models:
+            selected_model = st.sidebar.selectbox(
+                "Choose Model:",
+                options=available_models,
+                index=available_models.index(st.session_state.selected_model) if st.session_state.selected_model in available_models else 0,
+                key="model_select"
+            )
+            st.session_state.selected_model = selected_model
+
+        # Provider availability status
+        provider_available = st.session_state.llm_manager.check_provider_availability(selected_provider)
+        if provider_available:
+            st.sidebar.success(f"✅ {provider_names[selected_provider]} Available")
         else:
-            st.sidebar.error("❌ Failed to save preferences")
+            st.sidebar.error(f"❌ {provider_names[selected_provider]} Unavailable")
+            provider_info = st.session_state.llm_manager.get_provider_info(selected_provider)
+            api_key_env = provider_info.get('api_key_env', '')
+            if api_key_env:
+                st.sidebar.warning(f"Please set {api_key_env} environment variable")
+
+        # Save preferences button
+        if st.sidebar.button("💾 Save as Default", help="Save current provider and model as default"):
+            if st.session_state.llm_manager.save_user_preferences(selected_provider, st.session_state.selected_model):
+                st.sidebar.success("✅ Preferences saved!")
+            else:
+                st.sidebar.error("❌ Failed to save preferences")
+    else:
+        st.sidebar.info("🔧 Basic mode - LLM provider selection not available")
+        st.sidebar.markdown("*Using built-in research gap analysis*")
 
     # Security status (replaces debug info in production)
-    display_security_status()
+    display_simple_security_status()
 
     # Quick Help Tips
     with st.sidebar.expander("💡 Quick Tips"):
