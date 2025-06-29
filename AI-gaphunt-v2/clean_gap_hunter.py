@@ -383,116 +383,133 @@ class GapHunterBot:
     
     def extract_paper_info(self, paper):
         """Extract real paper information from API response with improved handling"""
-        # Debug: Print paper structure for troubleshooting (uncomment to debug)
+        # Debug: Print paper structure for troubleshooting (disabled for production)
         # print(f"DEBUG: Paper keys: {list(paper.keys())}")
-        # print(f"DEBUG: Paper sample: {dict(list(paper.items())[:3])}")
+        # print(f"DEBUG: Paper sample: {dict(list(paper.items())[:5])}")
 
-        # Extract title with better fallback handling
+        # Extract title with comprehensive format handling
         title = ''
 
-        # Try multiple title fields
-        title_fields = ['title', 'name', 'displayName']
-        for field in title_fields:
-            if field in paper and paper[field]:
-                title = paper[field]
-                break
+        # Try multiple title fields based on observed formats
+        if 'title' in paper and paper['title']:
+            title = paper['title']
+            # Handle Crossref format where title is an array
+            if isinstance(title, list) and len(title) > 0:
+                title = title[0]
+        elif 'name' in paper and paper['name']:
+            title = paper['name']
+        elif 'displayName' in paper and paper['displayName']:
+            title = paper['displayName']
 
-        # Handle different title formats
-        if isinstance(title, list):
-            title = title[0] if title else ''
-        elif not isinstance(title, str):
+        # Ensure title is a string
+        if not isinstance(title, str):
             title = str(title) if title else ''
 
-        if not title.strip():
-            # Generate a more informative fallback
-            title = f"Paper from {paper.get('source', 'unknown source')}"
-        else:
+        # Clean and validate title
+        if title and title.strip():
             title = title.strip()[:50]  # Limit to 50 chars as specified
+        else:
+            # Generate a more informative fallback
+            source = paper.get('source', paper.get('publisher', 'unknown'))
+            title = f"Paper from {source}"[:50]
 
-        # Extract first author with improved handling
+        # Extract first author with comprehensive format handling
         first_author = 'Unknown'
-        authors = paper.get('authors', [])
 
-        # Try alternative author fields if main one is empty
-        if not authors:
-            authors = paper.get('author', [])
-
-        if authors and len(authors) > 0:
-            author = authors[0]
-            if isinstance(author, dict):
-                # Try multiple name formats
-                name = None
-                if 'name' in author and author['name']:
-                    name = author['name']
-                elif 'family' in author and author['family']:
-                    # Crossref format
-                    given = author.get('given', '')
-                    family = author.get('family', '')
-                    name = f"{given} {family}".strip() if given else family
-                elif 'displayName' in author and author['displayName']:
-                    name = author['displayName']
-
+        # Try CORE format first (authors field)
+        if 'authors' in paper and paper['authors'] and len(paper['authors']) > 0:
+            author = paper['authors'][0]
+            if isinstance(author, dict) and 'name' in author and author['name']:
+                name = author['name'].strip()
+                # Remove trailing commas and clean up
+                name = name.rstrip(',').strip()
                 if name:
                     name_parts = name.split()
-                    first_author = name_parts[-1] if name_parts else name[:20]
+                    first_author = name_parts[-1] if len(name_parts) > 1 else name_parts[0] if name_parts else name[:15]
 
-            elif isinstance(author, str) and author.strip():
-                # Simple string format
-                name_parts = author.strip().split()
-                first_author = name_parts[-1] if name_parts else author.strip()[:20]
+        # Try Crossref format (author field)
+        elif 'author' in paper and paper['author'] and len(paper['author']) > 0:
+            author = paper['author'][0]
+            if isinstance(author, dict):
+                # Crossref format with given/family
+                if 'family' in author and author['family']:
+                    first_author = author['family']
+                elif 'given' in author and author['given']:
+                    first_author = author['given']
+                elif 'name' in author and author['name']:
+                    name = author['name'].strip()
+                    name_parts = name.split()
+                    first_author = name_parts[-1] if len(name_parts) > 1 else name_parts[0] if name_parts else name[:15]
 
-        # Fallback: try to extract from other fields
-        if first_author == 'Unknown':
-            # Try to get from paper metadata
-            if 'creator' in paper and paper['creator']:
-                creator = paper['creator']
-                if isinstance(creator, str):
-                    first_author = creator.split()[-1] if creator.split() else creator[:20]
+        # Try other possible author fields
+        elif 'creator' in paper and paper['creator']:
+            creator = paper['creator']
+            if isinstance(creator, str):
+                creator = creator.strip()
+                name_parts = creator.split()
+                first_author = name_parts[-1] if len(name_parts) > 1 else name_parts[0] if name_parts else creator[:15]
 
-        # Extract year with improved handling
-        year = '2024'  # Default to current year instead of "Data unavailable"
+        # Clean up author name
+        if first_author and first_author != 'Unknown':
+            first_author = first_author.strip().rstrip(',')[:15]
 
-        # Try multiple year fields
-        year_fields = ['year', 'publicationYear', 'datePublished']
-        for field in year_fields:
-            if field in paper and paper[field]:
-                try:
-                    year = str(paper[field])
-                    if len(year) >= 4:
-                        year = year[:4]  # Extract just the year part
-                        break
-                except (TypeError, ValueError):
-                    continue
+        # Extract year with comprehensive format handling and validation
+        year = '2024'  # Default to current year
 
-        # Try Crossref format
-        if year == '2024' and 'published' in paper and paper['published']:
-            published = paper['published']
-            if isinstance(published, dict) and 'date-parts' in published:
-                date_parts = published['date-parts']
-                if date_parts and len(date_parts) > 0 and len(date_parts[0]) > 0:
-                    try:
-                        year = str(date_parts[0][0])
-                    except (IndexError, TypeError, ValueError):
-                        pass
+        # Try CORE format first (yearPublished)
+        if 'yearPublished' in paper and paper['yearPublished']:
+            try:
+                candidate_year = int(paper['yearPublished'])
+                if 1900 <= candidate_year <= 2025:  # Validate realistic year range
+                    year = str(candidate_year)
+            except (TypeError, ValueError):
+                pass
 
-        # Try CORE format
-        if year == '2024' and 'publishedDate' in paper and paper['publishedDate']:
+        # Try CORE publishedDate format
+        elif 'publishedDate' in paper and paper['publishedDate']:
             try:
                 pub_date = str(paper['publishedDate'])
                 if len(pub_date) >= 4:
-                    year = pub_date[:4]
-            except (TypeError, IndexError):
+                    candidate_year = int(pub_date[:4])
+                    if 1900 <= candidate_year <= 2025:
+                        year = str(candidate_year)
+            except (TypeError, ValueError, IndexError):
                 pass
 
-        # Try to extract year from any date string
-        if year == '2024':
-            import re
-            for key, value in paper.items():
-                if isinstance(value, str) and re.search(r'20\d{2}', value):
-                    match = re.search(r'20\d{2}', value)
-                    if match:
-                        year = match.group()
-                        break
+        # Try Crossref format (published-print, issued, published)
+        elif 'published-print' in paper and paper['published-print']:
+            date_obj = paper['published-print']
+            if isinstance(date_obj, dict) and 'date-parts' in date_obj:
+                date_parts = date_obj['date-parts']
+                if date_parts and len(date_parts) > 0 and len(date_parts[0]) > 0:
+                    try:
+                        candidate_year = int(date_parts[0][0])
+                        if 1900 <= candidate_year <= 2025:
+                            year = str(candidate_year)
+                    except (IndexError, TypeError, ValueError):
+                        pass
+
+        # Try other Crossref date fields
+        elif 'issued' in paper and paper['issued']:
+            date_obj = paper['issued']
+            if isinstance(date_obj, dict) and 'date-parts' in date_obj:
+                date_parts = date_obj['date-parts']
+                if date_parts and len(date_parts) > 0 and len(date_parts[0]) > 0:
+                    try:
+                        candidate_year = int(date_parts[0][0])
+                        if 1900 <= candidate_year <= 2025:
+                            year = str(candidate_year)
+                    except (IndexError, TypeError, ValueError):
+                        pass
+
+        # Try standard year field
+        elif 'year' in paper and paper['year']:
+            try:
+                candidate_year = int(paper['year'])
+                if 1900 <= candidate_year <= 2025:
+                    year = str(candidate_year)
+            except (TypeError, ValueError):
+                pass
 
         # Extract journal name
         journal_name = ''
