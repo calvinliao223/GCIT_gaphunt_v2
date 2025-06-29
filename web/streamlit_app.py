@@ -31,18 +31,47 @@ if env_file.exists():
                     os.environ[key] = value
 
 # Import the existing Gap Hunter Bot logic
+# Add paths for both local development and Streamlit Cloud deployment
 sys.path.append('.')
+sys.path.append('..')
+sys.path.append('../AI-gaphunt-v2')
+sys.path.append('AI-gaphunt-v2')
 sys.path.append('src')
 sys.path.append('scripts')
-from clean_gap_hunter import GapHunterBot
+
+# Try to import from different possible locations
+try:
+    from clean_gap_hunter import GapHunterBot
+except ImportError:
+    try:
+        # Try from AI-gaphunt-v2 directory using relative path
+        current_dir = os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else os.getcwd()
+        sys.path.insert(0, os.path.join(current_dir, '..', 'AI-gaphunt-v2'))
+        from clean_gap_hunter import GapHunterBot
+    except ImportError:
+        try:
+            # Try absolute path for Streamlit Cloud
+            sys.path.insert(0, '/mount/src/gcit_gaphunt_v2/AI-gaphunt-v2')
+            from clean_gap_hunter import GapHunterBot
+        except ImportError as e:
+            st.error(f"❌ Failed to import GapHunterBot: {e}")
+            st.error("Please check that clean_gap_hunter.py is in the correct location.")
+            st.stop()
 
 # Try to import LLM providers (optional)
 try:
     from ai_scientist.llm_providers import LLMProviderManager
     LLM_PROVIDERS_AVAILABLE = True
 except ImportError:
-    LLM_PROVIDERS_AVAILABLE = False
-    print("⚠️ LLM providers not available - using basic functionality")
+    try:
+        # Try from src directory
+        current_dir = os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else os.getcwd()
+        sys.path.insert(0, os.path.join(current_dir, '..', 'src'))
+        from ai_scientist.llm_providers import LLMProviderManager
+        LLM_PROVIDERS_AVAILABLE = True
+    except ImportError:
+        LLM_PROVIDERS_AVAILABLE = False
+        print("⚠️ LLM providers not available - using basic functionality")
 
 # Page configuration
 st.set_page_config(
