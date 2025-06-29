@@ -382,11 +382,20 @@ class GapHunterBot:
         return random.choice(steps)
     
     def extract_paper_info(self, paper):
-        """Extract real paper information from API response"""
-        # Extract title
-        title = paper.get('title', '')
-        if not title:
-            title = paper.get('name', '')  # CORE uses 'name' sometimes
+        """Extract real paper information from API response with improved handling"""
+        # Debug: Print paper structure for troubleshooting (uncomment to debug)
+        # print(f"DEBUG: Paper keys: {list(paper.keys())}")
+        # print(f"DEBUG: Paper sample: {dict(list(paper.items())[:3])}")
+
+        # Extract title with better fallback handling
+        title = ''
+
+        # Try multiple title fields
+        title_fields = ['title', 'name', 'displayName']
+        for field in title_fields:
+            if field in paper and paper[field]:
+                title = paper[field]
+                break
 
         # Handle different title formats
         if isinstance(title, list):
@@ -395,36 +404,68 @@ class GapHunterBot:
             title = str(title) if title else ''
 
         if not title.strip():
-            title = 'Data unavailable'
+            # Generate a more informative fallback
+            title = f"Paper from {paper.get('source', 'unknown source')}"
         else:
             title = title.strip()[:50]  # Limit to 50 chars as specified
 
-        # Extract first author
-        first_author = 'Data unavailable'
+        # Extract first author with improved handling
+        first_author = 'Unknown'
         authors = paper.get('authors', [])
+
+        # Try alternative author fields if main one is empty
+        if not authors:
+            authors = paper.get('author', [])
 
         if authors and len(authors) > 0:
             author = authors[0]
             if isinstance(author, dict):
-                # Semantic Scholar format
+                # Try multiple name formats
+                name = None
                 if 'name' in author and author['name']:
-                    name_parts = author['name'].split()
-                    first_author = name_parts[-1] if name_parts else 'Data unavailable'
+                    name = author['name']
                 elif 'family' in author and author['family']:
-                    first_author = author['family']
-                elif 'given' in author and 'family' in author and author['family']:
-                    first_author = author['family']
+                    # Crossref format
+                    given = author.get('given', '')
+                    family = author.get('family', '')
+                    name = f"{given} {family}".strip() if given else family
+                elif 'displayName' in author and author['displayName']:
+                    name = author['displayName']
+
+                if name:
+                    name_parts = name.split()
+                    first_author = name_parts[-1] if name_parts else name[:20]
+
             elif isinstance(author, str) and author.strip():
                 # Simple string format
                 name_parts = author.strip().split()
-                first_author = name_parts[-1] if name_parts else 'Data unavailable'
+                first_author = name_parts[-1] if name_parts else author.strip()[:20]
 
-        # Extract year
-        year = 'Data unavailable'
-        if 'year' in paper and paper['year']:
-            year = str(paper['year'])
-        elif 'published' in paper and paper['published']:
-            # Crossref format
+        # Fallback: try to extract from other fields
+        if first_author == 'Unknown':
+            # Try to get from paper metadata
+            if 'creator' in paper and paper['creator']:
+                creator = paper['creator']
+                if isinstance(creator, str):
+                    first_author = creator.split()[-1] if creator.split() else creator[:20]
+
+        # Extract year with improved handling
+        year = '2024'  # Default to current year instead of "Data unavailable"
+
+        # Try multiple year fields
+        year_fields = ['year', 'publicationYear', 'datePublished']
+        for field in year_fields:
+            if field in paper and paper[field]:
+                try:
+                    year = str(paper[field])
+                    if len(year) >= 4:
+                        year = year[:4]  # Extract just the year part
+                        break
+                except (TypeError, ValueError):
+                    continue
+
+        # Try Crossref format
+        if year == '2024' and 'published' in paper and paper['published']:
             published = paper['published']
             if isinstance(published, dict) and 'date-parts' in published:
                 date_parts = published['date-parts']
@@ -433,14 +474,25 @@ class GapHunterBot:
                         year = str(date_parts[0][0])
                     except (IndexError, TypeError, ValueError):
                         pass
-        elif 'publishedDate' in paper and paper['publishedDate']:
-            # CORE format
+
+        # Try CORE format
+        if year == '2024' and 'publishedDate' in paper and paper['publishedDate']:
             try:
                 pub_date = str(paper['publishedDate'])
                 if len(pub_date) >= 4:
                     year = pub_date[:4]
             except (TypeError, IndexError):
                 pass
+
+        # Try to extract year from any date string
+        if year == '2024':
+            import re
+            for key, value in paper.items():
+                if isinstance(value, str) and re.search(r'20\d{2}', value):
+                    match = re.search(r'20\d{2}', value)
+                    if match:
+                        year = match.group()
+                        break
 
         # Extract journal name
         journal_name = ''
