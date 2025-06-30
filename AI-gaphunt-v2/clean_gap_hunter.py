@@ -430,9 +430,11 @@ class GapHunterBot:
         """Extract paper information with bulletproof fallback handling"""
         # Debug: Print paper structure for troubleshooting (disabled for production)
         # print(f"DEBUG: Paper keys: {list(paper.keys())}")
-        # print(f"DEBUG: Title field: {paper.get('title', 'MISSING')}")
-        # print(f"DEBUG: Authors field: {paper.get('authors', paper.get('author', 'MISSING'))}")
-        # print(f"DEBUG: Year fields: year={paper.get('year')}, yearPublished={paper.get('yearPublished')}, publishedDate={paper.get('publishedDate')}")
+        # print(f"DEBUG: DOI-related fields: doi={paper.get('doi')}, DOI={paper.get('DOI')}")
+        # if 'externalIds' in paper:
+        #     print(f"DEBUG: externalIds: {paper.get('externalIds')}")
+        # if 'identifiers' in paper:
+        #     print(f"DEBUG: identifiers: {paper.get('identifiers')}")
         # print("---")
 
         # BULLETPROOF TITLE EXTRACTION
@@ -597,6 +599,48 @@ class GapHunterBot:
             elif isinstance(container, str):
                 journal_name = container
 
+        # BULLETPROOF DOI EXTRACTION
+        doi = None
+
+        # Try all possible DOI fields from different APIs
+        doi_candidates = [
+            paper.get('doi'),                    # Standard DOI field
+            paper.get('DOI'),                    # Uppercase DOI field (Crossref)
+            paper.get('externalIds', {}).get('DOI') if isinstance(paper.get('externalIds'), dict) else None,  # Semantic Scholar
+            paper.get('identifiers', {}).get('doi') if isinstance(paper.get('identifiers'), dict) else None,  # CORE
+            paper.get('url'),                    # Sometimes URL contains DOI
+            paper.get('link')                    # Alternative link field
+        ]
+
+        for candidate in doi_candidates:
+            if candidate:
+                candidate_str = str(candidate).strip()
+
+                # Extract DOI from URL format (e.g., https://doi.org/10.1000/xyz)
+                if 'doi.org/' in candidate_str:
+                    doi_part = candidate_str.split('doi.org/')[-1]
+                    if doi_part and len(doi_part) > 5:  # Valid DOI should be longer than 5 chars
+                        doi = doi_part
+                        break
+
+                # Direct DOI format (e.g., 10.1000/xyz)
+                elif candidate_str.startswith('10.') and '/' in candidate_str:
+                    if len(candidate_str) > 5:  # Valid DOI should be longer than 5 chars
+                        doi = candidate_str
+                        break
+
+        # Clean and validate DOI
+        if doi:
+            # Remove any trailing parameters or fragments
+            doi = doi.split('?')[0].split('#')[0].strip()
+            # Ensure it looks like a valid DOI
+            if not (doi.startswith('10.') and '/' in doi and len(doi) > 7):
+                doi = None
+            # else:
+            #     print(f"DEBUG DOI: Found valid DOI: {doi}")
+        # else:
+        #     print(f"DEBUG DOI: No DOI found for paper: {paper.get('title', 'Unknown')[:30]}...")
+
         # FINAL VALIDATION - Ensure no "Data unavailable" can ever be returned
         if not title or 'unavailable' in title.lower():
             title = "Research Paper"
@@ -618,7 +662,8 @@ class GapHunterBot:
             'title': title[:50].strip(),
             'first_author': first_author[:15].strip(),
             'year': year,
-            'journal_name': journal_name.strip() if journal_name else ''
+            'journal_name': journal_name.strip() if journal_name else '',
+            'doi': doi if doi else None
         }
 
     def hunt_gaps(self, query):
@@ -810,9 +855,15 @@ class GapHunterBot:
             next_steps = self.generate_next_steps(gap, keywords)
 
             # FINAL VALIDATION: Ensure no "Data unavailable" in paper string
-            paper_string = f"{paper_info['first_author']} {paper_info['year']} {paper_info['title']}"
-            if 'unavailable' in paper_string.lower():
-                paper_string = f"Author {paper_info['year']} Research Paper"
+            base_paper_string = f"{paper_info['first_author']} {paper_info['year']} {paper_info['title']}"
+            if 'unavailable' in base_paper_string.lower():
+                base_paper_string = f"Author {paper_info['year']} Research Paper"
+
+            # Add DOI if available for verification
+            if paper_info.get('doi'):
+                paper_string = f"{base_paper_string} [DOI: {paper_info['doi']}]"
+            else:
+                paper_string = base_paper_string
 
             result = {
                 'paper': paper_string,
