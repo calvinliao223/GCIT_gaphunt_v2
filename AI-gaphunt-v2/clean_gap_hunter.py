@@ -859,9 +859,10 @@ class GapHunterBot:
             if 'unavailable' in base_paper_string.lower():
                 base_paper_string = f"Author {paper_info['year']} Research Paper"
 
-            # Add DOI if available for verification
+            # Add DOI as full clickable URL if available for verification
             if paper_info.get('doi'):
-                paper_string = f"{base_paper_string} [DOI: {paper_info['doi']}]"
+                doi_url = f"https://doi.org/{paper_info['doi']}"
+                paper_string = f"{base_paper_string} {doi_url}"
             else:
                 paper_string = base_paper_string
 
