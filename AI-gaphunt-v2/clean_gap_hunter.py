@@ -269,7 +269,7 @@ class GapHunterBot:
         return any(indicator in journal_lower for indicator in q1_indicators)
     
     def extract_research_gap(self, paper, query):
-        """Extract research gap (≤ 25 words)"""
+        """Extract research gap based on actual paper content (≤ 25 words)"""
         try:
             title = paper.get('title', '')
             abstract = paper.get('abstract', '')
@@ -292,32 +292,77 @@ class GapHunterBot:
             title_lower = title.lower()
             abstract_lower = abstract.lower()
 
-        except Exception:
+            # print(f"DEBUG GAP: Analyzing paper '{title[:50]}...'")
+            # print(f"DEBUG GAP: Abstract preview: '{abstract[:100]}...'")
+
+        except Exception as e:
+            # print(f"DEBUG GAP: Error processing paper: {e}")
             title_lower = ''
             abstract_lower = ''
 
-        gaps = [
-            f"Limited scalability of {query} methods in real-world applications",
-            f"Lack of interpretability in {query} deep learning models",
-            f"Insufficient evaluation of {query} across diverse datasets",
-            f"Missing comparison with state-of-the-art {query} methods",
-            f"Limited generalization of {query} across different domains",
-            f"Computational complexity of {query} not addressed",
-            f"Ethical implications of {query} applications understudied",
-            f"Robustness of {query} to adversarial conditions unclear"
+        # Analyze actual paper content to identify research gaps
+        content = f"{title_lower} {abstract_lower}"
+
+        # Define gap patterns based on actual research limitations
+        gap_patterns = [
+            # Scalability and performance gaps
+            {
+                'keywords': ['benchmark', 'dataset', 'performance', 'speed', 'efficiency'],
+                'gap': f"Limited scalability of {query} methods in real-world applications"
+            },
+            # Interpretability and explainability gaps
+            {
+                'keywords': ['black box', 'interpretab', 'explain', 'transparent', 'understand'],
+                'gap': f"Lack of interpretability in {query} deep learning models"
+            },
+            # Evaluation and validation gaps
+            {
+                'keywords': ['evaluat', 'metric', 'validat', 'test', 'benchmark'],
+                'gap': f"Insufficient evaluation of {query} across diverse datasets"
+            },
+            # Comparison and baseline gaps
+            {
+                'keywords': ['compar', 'baseline', 'state-of-art', 'sota', 'previous'],
+                'gap': f"Missing comparison with state-of-the-art {query} methods"
+            },
+            # Generalization gaps
+            {
+                'keywords': ['generaliz', 'transfer', 'domain', 'cross-domain', 'adapt'],
+                'gap': f"Limited generalization of {query} across different domains"
+            },
+            # Computational complexity gaps
+            {
+                'keywords': ['complex', 'computation', 'resource', 'memory', 'time'],
+                'gap': f"Computational complexity of {query} not addressed"
+            },
+            # Ethics and bias gaps
+            {
+                'keywords': ['bias', 'fair', 'ethic', 'social', 'responsible'],
+                'gap': f"Ethical implications of {query} applications understudied"
+            },
+            # Robustness and security gaps
+            {
+                'keywords': ['robust', 'adversar', 'attack', 'security', 'noise'],
+                'gap': f"Robustness of {query} to adversarial conditions unclear"
+            }
         ]
 
-        # Select based on paper content
-        if 'scalab' in title_lower or 'deploy' in title_lower:
-            return gaps[0]
-        elif 'interpret' in title_lower or 'explain' in title_lower:
-            return gaps[1]
-        elif 'evaluat' in title_lower:
-            return gaps[2]
-        elif 'compar' in title_lower:
-            return gaps[3]
+        # Score each gap pattern based on content relevance
+        gap_scores = []
+        for pattern in gap_patterns:
+            score = sum(1 for keyword in pattern['keywords'] if keyword in content)
+            gap_scores.append((score, pattern['gap']))
+
+        # Select the most relevant gap or random if no clear match
+        gap_scores.sort(reverse=True)
+        if gap_scores[0][0] > 0:
+            selected_gap = gap_scores[0][1]
+            # print(f"DEBUG GAP: Selected gap based on content: {selected_gap}")
         else:
-            return random.choice(gaps)
+            selected_gap = random.choice([pattern['gap'] for pattern in gap_patterns])
+            # print(f"DEBUG GAP: No clear match, selected random gap: {selected_gap}")
+
+        return selected_gap
     
     def expand_keywords(self, gap, query):
         """Generate 3-5 lowercase keywords"""
@@ -511,7 +556,7 @@ class GapHunterBot:
             if field_name in paper and paper[field_name]:
                 try:
                     candidate_year = extractor(paper[field_name])
-                    if candidate_year and 1900 <= candidate_year <= 2025:
+                    if candidate_year and 1900 <= candidate_year <= current_year:
                         year = str(candidate_year)
                         break
                 except (TypeError, ValueError, IndexError, KeyError):
@@ -526,7 +571,7 @@ class GapHunterBot:
                     matches = re.findall(r'\b(19\d{2}|20[0-2]\d)\b', value)
                     for match in matches:
                         candidate_year = int(match)
-                        if 1900 <= candidate_year <= 2025:
+                        if 1900 <= candidate_year <= current_year:
                             year = str(candidate_year)
                             break
                     if year:
@@ -560,11 +605,12 @@ class GapHunterBot:
         if not year or 'unavailable' in year.lower() or not year.isdigit():
             year = "2024"
 
-        # Ensure year is realistic
+        # Ensure year is realistic (no future years beyond current year)
         try:
             year_int = int(year)
-            if year_int < 1900 or year_int > 2025:
-                year = "2024"
+            current_year = 2024
+            if year_int < 1900 or year_int > current_year:
+                year = str(current_year)
         except (ValueError, TypeError):
             year = "2024"
 
